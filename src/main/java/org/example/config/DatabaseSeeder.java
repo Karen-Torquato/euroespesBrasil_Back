@@ -3,10 +3,14 @@ package org.example.config;
 import org.example.models.Estoque;
 import org.example.models.MovimentacaoEstoque;
 import org.example.models.Paciente;
+import org.example.models.Usuario;
 import org.example.repositories.EstoqueRepository;
 import org.example.repositories.MovimentacaoEstoqueRepository;
 import org.example.repositories.PacienteRepository;
+import org.example.repositories.UsuarioRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,20 +28,56 @@ public class DatabaseSeeder implements CommandLineRunner {
     private final PacienteRepository pacienteRepository;
     private final EstoqueRepository estoqueRepository;
     private final MovimentacaoEstoqueRepository movimentacaoEstoqueRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    @Value("${app.admin.username}")
+    private String adminUsername;
+
+    @Value("${app.admin.password}")
+    private String adminPassword;
+
+    @Value("${app.seed.enabled:true}")
+    private boolean seedEnabled;
+
+    @Value("${app.seed.create-default-admin:true}")
+    private boolean createDefaultAdmin;
 
     public DatabaseSeeder(
             PacienteRepository pacienteRepository,
             EstoqueRepository estoqueRepository,
-            MovimentacaoEstoqueRepository movimentacaoEstoqueRepository
+            MovimentacaoEstoqueRepository movimentacaoEstoqueRepository,
+            UsuarioRepository usuarioRepository,
+            PasswordEncoder passwordEncoder
     ) {
         this.pacienteRepository = pacienteRepository;
         this.estoqueRepository = estoqueRepository;
         this.movimentacaoEstoqueRepository = movimentacaoEstoqueRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
+        // Cria usuário admin no primeiro boot (senha hasheada com BCrypt)
+        if (createDefaultAdmin && usuarioRepository.count() == 0) {
+            Usuario admin = new Usuario();
+            admin.setUsername(adminUsername);
+            admin.setSenha(passwordEncoder.encode(adminPassword));
+            admin.setRole("ROLE_ADMIN");
+            usuarioRepository.save(admin);
+        }
+
+        // Massa de dados fake deve existir apenas em ambientes não produtivos.
+        if (!seedEnabled) {
+            return;
+        }
+
+        criarUsuarioSeNaoExistir("medico", "Medico@12345", "ROLE_MEDICO");
+        criarUsuarioSeNaoExistir("recepcao", "Recepcao@12345", "ROLE_RECEPCAO");
+        criarUsuarioSeNaoExistir("leitura", "Leitura@12345", "ROLE_LEITURA");
+
         boolean jaSeedado = pacienteRepository.findAll().stream()
                 .map(Paciente::getCodigoIdentificacao)
                 .anyMatch(codigo -> codigo != null && codigo.startsWith(SEED_PREFIX));
@@ -283,5 +323,17 @@ public class DatabaseSeeder implements CommandLineRunner {
         mov.setQuantidade(quantidade);
         mov.setMotivo(motivo);
         return mov;
+    }
+
+    private void criarUsuarioSeNaoExistir(String username, String senha, String role) {
+        if (usuarioRepository.findByUsername(username).isPresent()) {
+            return;
+        }
+
+        Usuario usuario = new Usuario();
+        usuario.setUsername(username);
+        usuario.setSenha(passwordEncoder.encode(senha));
+        usuario.setRole(role);
+        usuarioRepository.save(usuario);
     }
 }
