@@ -3,7 +3,9 @@ package org.example.services;
 import org.example.exceptions.BadRequestException;
 import org.example.exceptions.ConflictException;
 import org.example.exceptions.NotFoundException;
+import org.example.models.ItemPedidoRequest;
 import org.example.models.Paciente;
+import org.example.models.Produto;
 import org.example.repositories.PacienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,9 @@ public class PacienteService {
 
     @Autowired
     private EstoqueService estoqueService;
+
+    @Autowired
+    private ProdutoService produtoService;
 
         private static final Set<String> STATUS_FINALIZADOS = new HashSet<>(Set.of(
             "RESULTADO PRONTO"
@@ -78,12 +83,24 @@ public class PacienteService {
             throw new BadRequestException("Nome é obrigatório");
         }
 
+        boolean temItensPedido = paciente.getItensPedido() != null && !paciente.getItensPedido().isEmpty();
+
+        if (temItensPedido && (paciente.getCodigoIdentificacao() == null || paciente.getCodigoIdentificacao().isBlank())) {
+            ItemPedidoRequest primeiroItem = paciente.getItensPedido().get(0);
+            if (primeiroItem != null && primeiroItem.getProdutoId() != null) {
+                Produto produto = produtoService.obterPorId(primeiroItem.getProdutoId());
+                int proximaSequencia = (produto.getUltimaSequencia() == null ? 0 : produto.getUltimaSequencia()) + 1;
+                paciente.setCodigoIdentificacao(produtoService.montarCodigo(produto, proximaSequencia));
+            }
+        }
+
         validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
 
         // Se não for rascunho, valida estoque
         if (isRascunho(paciente.getStatusResultado())) {
             // Rascunho - define statusResultado
             paciente.setStatusResultado("Rascunho");
+            paciente.setItensPedido(null);
             return pacienteRepository.save(paciente);
         }
 
@@ -93,6 +110,25 @@ public class PacienteService {
 
         aplicarDatasFluxo(paciente, null);
 
+        if (temItensPedido) {
+            List<ItemPedidoRequest> itensSolicitados = paciente.getItensPedido();
+            int totalKits = itensSolicitados.stream()
+                    .mapToInt(item -> item.getQuantidade() == null ? 0 : item.getQuantidade())
+                    .sum();
+
+            if (totalKits <= 0) {
+                throw new BadRequestException("Informe ao menos um produto com quantidade válida");
+            }
+
+            paciente.setQuantidadeKits(totalKits);
+            paciente.setItensPedido(null);
+
+            Paciente salvo = pacienteRepository.save(paciente);
+            produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
+            return pacienteRepository.findById(salvo.getId()).orElse(salvo);
+        }
+
+        // Fluxo legado sem produtos cadastrados (compatibilidade)
         validarQuantidadeKitsAtivo(paciente.getQuantidadeKits());
         Paciente salvo = pacienteRepository.save(paciente);
         estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para paciente " + salvo.getNome());

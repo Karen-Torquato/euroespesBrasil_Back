@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "pacientes")
@@ -51,6 +53,12 @@ public class Paciente {
 
     @Size(max = 100)
     private String codigoIdentificacao;
+
+    @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PedidoItem> itens = new ArrayList<>();
+
+    @Transient
+    private List<ItemPedidoRequest> itensPedido;
 
     // "sim", "nao", ""
     private String kitEntregueHoje;
