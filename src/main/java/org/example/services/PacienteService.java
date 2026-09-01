@@ -52,6 +52,7 @@ public class PacienteService {
             if (normalizarConsistenciaFluxoLegado(paciente)) {
                 mudou = true;
             }
+            paciente.getItens().size();
         }
 
         if (mudou) {
@@ -62,11 +63,13 @@ public class PacienteService {
     }
 
     // GET pacientes com paginação
+    @Transactional(readOnly = true)
     public Page<Paciente> listarPaginado(Pageable pageable) {
         Page<Paciente> page = pacienteRepository.findAll(pageable);
         page.getContent().forEach(p -> {
             preencherTimestampsAusentes(p);
             normalizarConsistenciaFluxoLegado(p);
+            p.getItens().size();
         });
         return page;
     }
@@ -83,6 +86,7 @@ public class PacienteService {
             if (mudou) {
                 pacienteRepository.save(paciente.get());
             }
+            paciente.get().getItens().size();
         }
         return paciente;
     }
@@ -105,7 +109,9 @@ public class PacienteService {
             // Rascunho - define statusResultado
             paciente.setStatusResultado("Rascunho");
             paciente.setItensPedido(null);
-            return pacienteRepository.save(paciente);
+            Paciente salvo = pacienteRepository.save(paciente);
+            salvo.getItens().size();
+            return salvo;
         }
 
         if (paciente.getStatusResultado() == null || paciente.getStatusResultado().isBlank()) {
@@ -132,7 +138,9 @@ public class PacienteService {
             Paciente salvo = pacienteRepository.save(paciente);
             List<PedidoItem> itensGerados = produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
             salvo.setCodigoIdentificacao(itensGerados.get(0).getCodigoGerado());
-            return pacienteRepository.save(salvo);
+            Paciente atualizado = pacienteRepository.save(salvo);
+            atualizado.getItens().size();
+            return atualizado;
         }
 
         // Fluxo legado sem produtos cadastrados (compatibilidade)
@@ -140,6 +148,7 @@ public class PacienteService {
         validarQuantidadeKitsAtivo(paciente.getQuantidadeKits());
         Paciente salvo = pacienteRepository.save(paciente);
         estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para paciente " + salvo.getNome());
+        salvo.getItens().size();
         return salvo;
     }
 
@@ -236,9 +245,11 @@ public class PacienteService {
         if (eraRascunho && !isRascunho(salvo.getStatusResultado())) {
             validarQuantidadeKitsAtivo(salvo.getQuantidadeKits());
             estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para ativar paciente " + salvo.getNome());
+            salvo.getItens().size();
             return salvo;
         }
 
+        salvo.getItens().size();
         return salvo;
     }
 
@@ -344,10 +355,7 @@ public class PacienteService {
             return;
         }
 
-        boolean existe = pacienteRepository.findAll().stream()
-                .map(Paciente::getCodigoIdentificacao)
-                .map(this::normalizarCodigo)
-                .anyMatch(codigoNovo::equals);
+        boolean existe = pacienteRepository.existsByCodigoIdentificacao(codigoNovo);
 
         if (existe) {
             throw new ConflictException("Já existe paciente com este código de identificação");
@@ -362,11 +370,7 @@ public class PacienteService {
             return;
         }
 
-        boolean existe = pacienteRepository.findAll().stream()
-                .filter(p -> !p.getId().equals(pacienteId))
-                .map(Paciente::getCodigoIdentificacao)
-                .map(this::normalizarCodigo)
-                .anyMatch(novo::equals);
+        boolean existe = pacienteRepository.existsByCodigoIdentificacaoAndIdNot(novo, pacienteId);
 
         if (existe) {
             throw new ConflictException("Já existe paciente com este código de identificação");

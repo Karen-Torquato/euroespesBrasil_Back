@@ -83,7 +83,7 @@ public class AuthController {
                             .body(Map.of("message", "Usuário não encontrado")));
         } catch (JwtException e) {
             return ResponseEntity.status(401)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", "Token inválido ou expirado"));
         }
     }
 }

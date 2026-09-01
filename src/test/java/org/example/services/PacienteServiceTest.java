@@ -138,7 +138,7 @@ class PacienteServiceTest {
         void codigoDuplicadoLancaConflict() {
             Paciente existente = pacienteExistente(1L, "Outro", "Pendente");
             existente.setCodigoIdentificacao("123456");
-            when(pacienteRepository.findAll()).thenReturn(List.of(existente));
+            when(pacienteRepository.existsByCodigoIdentificacao("123456")).thenReturn(true);
 
             Paciente novo = novoPaciente("Novo", "Rascunho", 1);
             novo.setCodigoIdentificacao("123456");

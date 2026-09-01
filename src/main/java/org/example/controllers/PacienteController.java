@@ -38,6 +38,9 @@ public class PacienteController {
     private long maxSizeBytes;
 
     private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("pdf", "jpg", "jpeg", "png");
+        private static final Set<String> CAMPOS_ORDENACAO_PERMITIDOS = Set.of(
+            "criadoEm", "nome", "statusResultado", "codigoIdentificacao"
+        );
 
     public PacienteController(PacienteService pacienteService) {
         this.pacienteService = pacienteService;
@@ -52,6 +55,15 @@ public class PacienteController {
             @RequestParam(required = false, defaultValue = "desc") String direction) {
 
         if (page != null) {
+            if (page < 0) {
+                throw new BadRequestException("Página deve ser maior ou igual a zero");
+            }
+            if (size == null || size < 1) {
+                throw new BadRequestException("Tamanho da página deve ser maior que zero");
+            }
+            if (!CAMPOS_ORDENACAO_PERMITIDOS.contains(sort)) {
+                throw new BadRequestException("Campo de ordenação não permitido");
+            }
             Sort.Direction dir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
             org.springframework.data.domain.Pageable pageable =
                     PageRequest.of(page, Math.min(size, 100), Sort.by(dir, sort));

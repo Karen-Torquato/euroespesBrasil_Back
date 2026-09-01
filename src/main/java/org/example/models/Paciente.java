@@ -56,6 +56,7 @@ public class Paciente {
     private String codigoRastreio;
 
     @Size(max = 100)
+    @Column(unique = true)
     private String codigoIdentificacao;
 
     @OneToMany(mappedBy = "paciente", cascade = CascadeType.ALL, orphanRemoval = true)
