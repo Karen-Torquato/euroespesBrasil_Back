@@ -12,6 +12,10 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,7 +45,22 @@ public class PacienteController {
 
     // GET todos os pacientes
     @GetMapping
-    public ResponseEntity<List<Paciente>> obterTodosPacientes() {
+    public ResponseEntity<?> obterTodosPacientes(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size,
+            @RequestParam(required = false, defaultValue = "criadoEm") String sort,
+            @RequestParam(required = false, defaultValue = "desc") String direction) {
+
+        if (page != null) {
+            Sort.Direction dir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            org.springframework.data.domain.Pageable pageable =
+                    PageRequest.of(page, Math.min(size, 100), Sort.by(dir, sort));
+            org.springframework.data.domain.Page<Paciente> resultado =
+                    pacienteService.listarPaginado(pageable);
+            resultado.getContent().forEach(this::mascararDadosSensiveis);
+            return ResponseEntity.ok(resultado);
+        }
+
         List<Paciente> pacientes = pacienteService.obterTodosPacientes();
         pacientes.forEach(this::mascararDadosSensiveis);
         return ResponseEntity.ok(pacientes);
@@ -106,6 +125,12 @@ public class PacienteController {
                 throw new BadRequestException("Extensão não permitida. Permitidas: pdf, jpg, jpeg, png");
             }
 
+            // Ler conteúdo uma vez para reutilizar (validação e gravação)
+            byte[] conteudo = arquivo.getBytes();
+
+            // Validar magic bytes (assinatura real do arquivo)
+            validarMagicBytes(conteudo, extensao);
+
             // Criar diretório se não existir
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             if (!Files.exists(uploadPath)) {
@@ -121,7 +146,7 @@ public class PacienteController {
                 throw new BadRequestException("Caminho de arquivo inválido");
             }
 
-            Files.write(caminhoFinal, arquivo.getBytes());
+            Files.write(caminhoFinal, conteudo);
             pacienteService.salvarAnexo(id, nomeOriginal, caminhoFinal.toString());
 
             Paciente paciente = pacienteService.obterPacientePorId(id)
@@ -167,6 +192,28 @@ public class PacienteController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomeDownload + "\"")
                 .header("X-Content-Type-Options", "nosniff")
                 .body(resource);
+    }
+
+    /**
+     * Valida os magic bytes (assinatura binária) do arquivo contra a extensão declarada.
+     * Impede uploads de arquivos com extensão falsa (ex: executável renomeado para .pdf).
+     */
+    private void validarMagicBytes(byte[] conteudo, String extensao) {
+        if (conteudo == null || conteudo.length < 4) {
+            throw new BadRequestException("Arquivo muito pequeno ou corrompido");
+        }
+        boolean valido = switch (extensao) {
+            case "pdf" ->
+                conteudo[0] == 0x25 && conteudo[1] == 0x50 && conteudo[2] == 0x44 && conteudo[3] == 0x46;
+            case "jpg", "jpeg" ->
+                (conteudo[0] & 0xFF) == 0xFF && (conteudo[1] & 0xFF) == 0xD8 && (conteudo[2] & 0xFF) == 0xFF;
+            case "png" ->
+                (conteudo[0] & 0xFF) == 0x89 && conteudo[1] == 0x50 && conteudo[2] == 0x4E && conteudo[3] == 0x47;
+            default -> false;
+        };
+        if (!valido) {
+            throw new BadRequestException("Conteúdo do arquivo não corresponde à extensão declarada");
+        }
     }
 
     /**

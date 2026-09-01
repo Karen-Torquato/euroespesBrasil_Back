@@ -1,9 +1,11 @@
 package org.example.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -78,6 +80,9 @@ public class SecurityConfig {
                     .maxAgeInSeconds(31536000))
                 .referrerPolicy(ref ->
                     ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                .contentSecurityPolicy(csp -> csp.policyDirectives(
+                    "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'"
+                ))
             )
 
             .requiresChannel(channel -> {
@@ -85,6 +90,15 @@ public class SecurityConfig {
                     channel.anyRequest().requiresSecure();
                 }
             })
+
+            // 401 para não autenticado, 403 para sem permissão
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"message\":\"Não autenticado. Forneça um token JWT válido.\"}");
+                })
+            )
 
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             // Filtro JWT antes do filtro padrão

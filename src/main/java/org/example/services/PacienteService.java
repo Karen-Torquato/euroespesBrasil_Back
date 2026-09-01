@@ -5,9 +5,11 @@ import org.example.exceptions.ConflictException;
 import org.example.exceptions.NotFoundException;
 import org.example.models.ItemPedidoRequest;
 import org.example.models.Paciente;
-import org.example.models.Produto;
+import org.example.models.PedidoItem;
 import org.example.repositories.PacienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +61,16 @@ public class PacienteService {
         return pacientes;
     }
 
+    // GET pacientes com paginação
+    public Page<Paciente> listarPaginado(Pageable pageable) {
+        Page<Paciente> page = pacienteRepository.findAll(pageable);
+        page.getContent().forEach(p -> {
+            preencherTimestampsAusentes(p);
+            normalizarConsistenciaFluxoLegado(p);
+        });
+        return page;
+    }
+
     // GET paciente por ID
     @Transactional
     public Optional<Paciente> obterPacientePorId(Long id) {
@@ -85,15 +97,7 @@ public class PacienteService {
 
         boolean temItensPedido = paciente.getItensPedido() != null && !paciente.getItensPedido().isEmpty();
 
-        if (temItensPedido && (paciente.getCodigoIdentificacao() == null || paciente.getCodigoIdentificacao().isBlank())) {
-            ItemPedidoRequest primeiroItem = paciente.getItensPedido().get(0);
-            if (primeiroItem != null && primeiroItem.getProdutoId() != null) {
-                Produto produto = produtoService.obterPorId(primeiroItem.getProdutoId());
-                int proximaSequencia = (produto.getUltimaSequencia() == null ? 0 : produto.getUltimaSequencia()) + 1;
-                paciente.setCodigoIdentificacao(produtoService.montarCodigo(produto, proximaSequencia));
-            }
-        }
-
+        // Valida código antes de qualquer retorno antecipado
         validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
 
         // Se não for rascunho, valida estoque
@@ -122,13 +126,17 @@ public class PacienteService {
 
             paciente.setQuantidadeKits(totalKits);
             paciente.setItensPedido(null);
+            // The backend owns the final code; client-side code is only a preview.
+            paciente.setCodigoIdentificacao(null);
 
             Paciente salvo = pacienteRepository.save(paciente);
-            produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
-            return pacienteRepository.findById(salvo.getId()).orElse(salvo);
+            List<PedidoItem> itensGerados = produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
+            salvo.setCodigoIdentificacao(itensGerados.get(0).getCodigoGerado());
+            return pacienteRepository.save(salvo);
         }
 
         // Fluxo legado sem produtos cadastrados (compatibilidade)
+        validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
         validarQuantidadeKitsAtivo(paciente.getQuantidadeKits());
         Paciente salvo = pacienteRepository.save(paciente);
         estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para paciente " + salvo.getNome());

@@ -2,6 +2,7 @@ package org.example.controllers;
 
 import org.example.repositories.UsuarioRepository;
 import org.example.security.JwtUtil;
+import io.jsonwebtoken.JwtException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -51,6 +52,39 @@ public class AuthController {
                 })
                 .orElse(ResponseEntity.status(401)
                         .body(Map.of("message", "Credenciais inválidas")));
+    }
+
+    /**
+     * POST /api/auth/refresh
+     * Body: { "token": "eyJ..." }
+     * Renova o token JWT se ainda estiver dentro da janela de graça (7 dias após expiração).
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody Map<String, String> body) {
+        String token = body.get("token");
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Token é obrigatório"));
+        }
+        try {
+            io.jsonwebtoken.Claims claims = jwtUtil.validarParaRefresh(token);
+            String username = claims.getSubject();
+
+            return usuarioRepository.findByUsername(username)
+                    .map(u -> {
+                        String novoToken = jwtUtil.gerarToken(u.getUsername(), u.getRole());
+                        return ResponseEntity.ok(Map.of(
+                                "token", novoToken,
+                                "role", u.getRole(),
+                                "username", u.getUsername()
+                        ));
+                    })
+                    .orElse(ResponseEntity.status(401)
+                            .body(Map.of("message", "Usuário não encontrado")));
+        } catch (JwtException e) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("message", e.getMessage()));
+        }
     }
 }
 

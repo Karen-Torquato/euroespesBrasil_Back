@@ -170,5 +170,37 @@ class JwtUtilTest {
             assertThat(jwtUtil.isTokenValido(tokenDeOutro)).isFalse();
         }
     }
+
+    // ─── validarParaRefresh ─────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("validarParaRefresh")
+    class ValidarParaRefresh {
+
+        @Test
+        @DisplayName("token válido deve funcionar normalmente no refresh")
+        void tokenValidoDevePassar() {
+            String token = jwtUtil.gerarToken("user", "ROLE_ADMIN");
+            Claims claims = jwtUtil.validarParaRefresh(token);
+            assertThat(claims.getSubject()).isEqualTo("user");
+        }
+
+        @Test
+        @DisplayName("token recentemente expirado deve ser aceito dentro da janela de graça")
+        void tokenRecentementeExpiradoDeveSerAceito() {
+            JwtUtil jwtExpirado = new JwtUtil(SECRET, -1000L); // expirado há 1 segundo
+            String token = jwtExpirado.gerarToken("user", "ROLE_ADMIN");
+
+            Claims claims = jwtUtil.validarParaRefresh(token);
+            assertThat(claims.getSubject()).isEqualTo("user");
+        }
+
+        @Test
+        @DisplayName("token completamente inválido deve lançar JwtException")
+        void tokenInvalidoDeveLancarException() {
+            assertThatThrownBy(() -> jwtUtil.validarParaRefresh("token.invalido.qualquer"))
+                    .isInstanceOf(Exception.class);
+        }
+    }
 }
 
