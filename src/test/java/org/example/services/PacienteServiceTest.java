@@ -93,6 +93,26 @@ class PacienteServiceTest {
         }
 
         @Test
+        @DisplayName("CPF inválido deve lançar BadRequestException")
+        void cpfInvalidoLancaBadRequest() {
+            Paciente p = novoPaciente("Maria", "Rascunho", 1);
+            p.setCpf("111.111.111-11");
+
+            assertThatThrownBy(() -> pacienteService.criarPaciente(p))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("CPF");
+        }
+
+        @Test
+        @DisplayName("CPF válido deve ser aceito")
+        void cpfValidoDeveSerAceito() {
+            Paciente p = novoPaciente("Maria", "Rascunho", 1);
+            p.setCpf("529.982.247-25");
+
+            assertThatCode(() -> pacienteService.criarPaciente(p)).doesNotThrowAnyException();
+        }
+
+        @Test
         @DisplayName("rascunho não deve debitar estoque")
         void rascunhoNaoDebitaEstoque() {
             Paciente p = novoPaciente("João", "Rascunho", 1);

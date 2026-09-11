@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.UUID;
 
 @Component
 public class SecurityAuditFilter extends OncePerRequestFilter {
@@ -23,6 +24,8 @@ public class SecurityAuditFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         long start = System.currentTimeMillis();
+                        String requestId = UUID.randomUUID().toString();
+                        response.setHeader("X-Request-Id", requestId);
         filterChain.doFilter(request, response);
 
         if (!isAuditablePath(request.getRequestURI())) {
@@ -35,7 +38,8 @@ public class SecurityAuditFilter extends OncePerRequestFilter {
                 : "anonymous";
 
         // Audit log intentionally avoids request/response bodies to prevent PII leakage.
-        log.info("AUDIT method={} path={} status={} principal={} elapsedMs={}",
+        log.info("AUDIT requestId={} method={} path={} status={} principal={} elapsedMs={}",
+            requestId,
                 request.getMethod(),
                 request.getRequestURI(),
                 response.getStatus(),

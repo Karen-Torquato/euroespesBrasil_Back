@@ -1,6 +1,7 @@
 package org.example.controllers;
 
 import org.example.repositories.UsuarioRepository;
+import org.example.models.Usuario;
 import org.example.security.JwtUtil;
 import io.jsonwebtoken.JwtException;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,7 @@ public class AuthController {
 
         return usuarioRepository.findByUsername(username)
                 .filter(u -> passwordEncoder.matches(senha, u.getSenha()))
+                .filter(Usuario::isAtivo)
                 .map(u -> {
                     String token = jwtUtil.gerarToken(u.getUsername(), u.getRole());
                     return ResponseEntity.ok(Map.of(
@@ -71,6 +73,7 @@ public class AuthController {
             String username = claims.getSubject();
 
             return usuarioRepository.findByUsername(username)
+                    .filter(Usuario::isAtivo)
                     .map(u -> {
                         String novoToken = jwtUtil.gerarToken(u.getUsername(), u.getRole());
                         return ResponseEntity.ok(Map.of(
@@ -85,6 +88,11 @@ public class AuthController {
             return ResponseEntity.status(401)
                     .body(Map.of("message", "Token inválido ou expirado"));
         }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout() {
+        return ResponseEntity.ok(Map.of("message", "Sessão encerrada"));
     }
 }
 

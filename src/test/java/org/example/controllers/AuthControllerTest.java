@@ -101,4 +101,20 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("token", "token.invalido"))))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void login_comUsuarioInativo_deveRetornar401() throws Exception {
+        Usuario inativo = new Usuario();
+        inativo.setUsername("inativo");
+        inativo.setSenha(passwordEncoder.encode("Test@12345"));
+        inativo.setRole("ROLE_ADMIN");
+        inativo.setAtivo(false);
+        usuarioRepository.save(inativo);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("username", "inativo", "senha", "Test@12345"))))
+                .andExpect(status().isUnauthorized());
+    }
 }

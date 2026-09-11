@@ -99,6 +99,8 @@ public class PacienteService {
             throw new BadRequestException("Nome é obrigatório");
         }
 
+        validarCpf(paciente.getCpf());
+
         boolean temItensPedido = paciente.getItensPedido() != null && !paciente.getItensPedido().isEmpty();
 
         // Valida código antes de qualquer retorno antecipado
@@ -179,6 +181,7 @@ public class PacienteService {
             paciente.setNome(pacienteAtualizado.getNome());
         }
         if (pacienteAtualizado.getCpf() != null) {
+            validarCpf(pacienteAtualizado.getCpf());
             paciente.setCpf(pacienteAtualizado.getCpf());
         }
         if (pacienteAtualizado.getTelefone() != null) {
@@ -390,6 +393,34 @@ public class PacienteService {
         if (quantidadeKits == null || quantidadeKits <= 0) {
             throw new BadRequestException("Quantidade de kits deve ser maior que zero para paciente final");
         }
+    }
+
+    private void validarCpf(String cpf) {
+        if (cpf == null || cpf.isBlank()) {
+            return;
+        }
+
+        String digits = cpf.replaceAll("\\D+", "");
+        if (digits.length() != 11 || digits.chars().distinct().count() == 1 || !cpfValido(digits)) {
+            throw new BadRequestException("CPF inválido");
+        }
+    }
+
+    private boolean cpfValido(String digits) {
+        int primeiroDigito = calcularDigitoCpf(digits, 9);
+        int segundoDigito = calcularDigitoCpf(digits, 10);
+        return primeiroDigito == Character.digit(digits.charAt(9), 10)
+                && segundoDigito == Character.digit(digits.charAt(10), 10);
+    }
+
+    private int calcularDigitoCpf(String digits, int tamanhoBase) {
+        int soma = 0;
+        int peso = tamanhoBase + 1;
+        for (int indice = 0; indice < tamanhoBase; indice++) {
+            soma += Character.digit(digits.charAt(indice), 10) * peso--;
+        }
+        int resto = soma % 11;
+        return resto < 2 ? 0 : 11 - resto;
     }
 
     private void aplicarDatasFluxo(Paciente paciente, String statusAnterior) {

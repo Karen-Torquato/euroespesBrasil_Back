@@ -64,6 +64,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/estoque/movimentar").hasAnyRole("ADMIN", "RECEPCAO")
                 .requestMatchers(HttpMethod.GET, "/api/pacientes/**", "/api/estoque/**")
                     .hasAnyRole("ADMIN", "MEDICO", "RECEPCAO", "LEITURA")
+                .requestMatchers(HttpMethod.GET, "/api/produtos/**")
+                    .hasAnyRole("ADMIN", "MEDICO", "RECEPCAO", "LEITURA")
+                .requestMatchers(HttpMethod.POST, "/api/produtos/**")
+                    .hasAnyRole("ADMIN", "RECEPCAO")
+                .requestMatchers(HttpMethod.PUT, "/api/produtos/**")
+                    .hasAnyRole("ADMIN", "RECEPCAO")
                 .requestMatchers(HttpMethod.POST, "/api/pacientes/**")
                     .hasAnyRole("ADMIN", "MEDICO", "RECEPCAO")
                 .requestMatchers(HttpMethod.PUT, "/api/pacientes/**")
@@ -127,7 +133,6 @@ public class SecurityConfig {
         }
 
         config.setAllowedOrigins(origins);
-        config.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
         config.setAllowCredentials(true);

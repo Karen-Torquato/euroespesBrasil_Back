@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.Map;
 
@@ -61,6 +62,15 @@ class SecurityIntegrationTest {
                             .header("Origin", "http://localhost:4200")
                             .header("Access-Control-Request-Method", "GET"))
                     .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("origem não autorizada não deve receber header CORS")
+        void origemNaoAutorizadaNaoRecebeCors() throws Exception {
+            mockMvc.perform(options("/api/pacientes")
+                    .header("Origin", "https://origem-invalida.example")
+                    .header("Access-Control-Request-Method", "GET"))
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
         }
     }
 
@@ -230,6 +240,15 @@ class SecurityIntegrationTest {
                             .header("Authorization", "Bearer " + token))
                     .andExpect(header().string("X-Frame-Options", "DENY"));
         }
+
+                @Test
+                @DisplayName("resposta auditável deve conter identificador de requisição")
+                void deveConterRequestId() throws Exception {
+                    String token = loginEObterToken();
+                    mockMvc.perform(get("/api/pacientes")
+                            .header("Authorization", "Bearer " + token))
+                        .andExpect(header().exists("X-Request-Id"));
+                }
     }
 
     // ─── Token válido — acesso autorizado ───────────────────────────────────────
@@ -267,6 +286,31 @@ class SecurityIntegrationTest {
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.totalKits").exists());
+        }
+    }
+
+    @Nested
+    @DisplayName("Produtos — autorização por perfil")
+    class ProdutosAutorizacao {
+
+        @Test
+        @WithMockUser(roles = "LEITURA")
+        @DisplayName("perfil de leitura não pode criar produto")
+        void leituraNaoPodeCriarProduto() throws Exception {
+            mockMvc.perform(post("/api/produtos")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"nome\":\"Kit\",\"codigoProduto\":\"01\",\"codigoSerie\":\"01\",\"estoqueAtual\":1,\"estoqueMinimo\":1}"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @WithMockUser(roles = "MEDICO")
+        @DisplayName("perfil médico não pode ajustar estoque de produto")
+        void medicoNaoPodeAjustarEstoque() throws Exception {
+            mockMvc.perform(post("/api/produtos/1/ajustar-estoque")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"delta\":1}"))
+                    .andExpect(status().isForbidden());
         }
     }
 }

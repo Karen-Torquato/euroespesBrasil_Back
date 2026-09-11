@@ -26,5 +26,8 @@ public class Usuario {
     /** Ex.: ROLE_ADMIN, ROLE_USER */
     @Column(nullable = false)
     private String role;
+
+    @Column(nullable = false)
+    private boolean ativo = true;
 }
 

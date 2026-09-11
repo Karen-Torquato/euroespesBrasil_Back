@@ -64,11 +64,12 @@ class PacienteControllerTest {
     }
 
     @Test
-    void listarPacientes_comAuth_deveRetornarLista() throws Exception {
+    void listarPacientes_comAuth_deveRetornarPaginaPadrao() throws Exception {
         mockMvc.perform(get("/api/pacientes")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.totalElements").exists());
     }
 
     @Test

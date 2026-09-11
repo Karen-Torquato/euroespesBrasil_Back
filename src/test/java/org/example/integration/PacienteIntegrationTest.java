@@ -88,7 +88,7 @@ class PacienteIntegrationTest {
     void criarPacienteAtivo() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "nome", "Paciente Ativo Teste",
-                "cpf", "12345678901",
+                "cpf", "529.982.247-25",
                 "email", "ativo@teste.com",
                 "telefone", "(11) 99999-0001",
                 "endereco", "Rua Teste, 123",
@@ -117,7 +117,7 @@ class PacienteIntegrationTest {
         mockMvc.perform(get("/api/pacientes/" + idPacienteAtivo)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.cpf").value(not("12345678901"))) // não pode ser CPF puro
+                        .andExpect(jsonPath("$.cpf").value(not("52998224725"))) // não pode ser CPF puro
                 .andExpect(jsonPath("$.cpf").value(containsString("***"))); // deve estar mascarado
     }
 

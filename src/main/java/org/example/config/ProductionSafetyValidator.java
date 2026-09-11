@@ -6,6 +6,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Component
 public class ProductionSafetyValidator implements CommandLineRunner {
@@ -24,6 +25,12 @@ public class ProductionSafetyValidator implements CommandLineRunner {
     @Value("${app.seed.create-default-admin:false}")
     private boolean createDefaultAdmin;
 
+    @Value("${app.seed.enabled:false}")
+    private boolean seedEnabled;
+
+    @Value("${app.security.require-ssl:false}")
+    private boolean requireSsl;
+
     public ProductionSafetyValidator(Environment environment) {
         this.environment = environment;
     }
@@ -37,12 +44,26 @@ public class ProductionSafetyValidator implements CommandLineRunner {
             return;
         }
 
-        if (jwtSecret.contains("MudeMeParaUmSegredo")) {
+        if (jwtSecret == null || jwtSecret.isBlank() || jwtSecret.length() < 64
+                || jwtSecret.contains("MudeMeParaUmSegredo")) {
             throw new IllegalStateException("Configuracao insegura: JWT_SECRET padrao detectado em profile prod");
         }
 
-        if (corsOrigins.isBlank() || corsOrigins.contains("localhost")) {
+        if (!requireSsl) {
+            throw new IllegalStateException("Configuracao insegura: HTTPS deve ser obrigatorio em profile prod");
+        }
+
+        List<String> origins = Arrays.stream(corsOrigins.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+        if (origins.isEmpty() || origins.stream().anyMatch(origin ->
+                !origin.startsWith("https://") || origin.contains("localhost") || origin.contains("*"))) {
             throw new IllegalStateException("Configuracao insegura: CORS_ORIGINS invalido para profile prod");
+        }
+
+        if (seedEnabled) {
+            throw new IllegalStateException("Configuracao insegura: APP_SEED_ENABLED deve ser false em profile prod");
         }
 
         if (createDefaultAdmin && "Admin@12345".equals(adminPassword)) {

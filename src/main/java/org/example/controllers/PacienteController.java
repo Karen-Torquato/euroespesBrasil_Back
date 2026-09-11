@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -49,33 +48,27 @@ public class PacienteController {
     // GET todos os pacientes
     @GetMapping
     public ResponseEntity<?> obterTodosPacientes(
-            @RequestParam(required = false) Integer page,
+            @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
             @RequestParam(required = false, defaultValue = "criadoEm") String sort,
             @RequestParam(required = false, defaultValue = "desc") String direction) {
 
-        if (page != null) {
-            if (page < 0) {
-                throw new BadRequestException("Página deve ser maior ou igual a zero");
-            }
-            if (size == null || size < 1) {
-                throw new BadRequestException("Tamanho da página deve ser maior que zero");
-            }
-            if (!CAMPOS_ORDENACAO_PERMITIDOS.contains(sort)) {
-                throw new BadRequestException("Campo de ordenação não permitido");
-            }
-            Sort.Direction dir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
-            org.springframework.data.domain.Pageable pageable =
-                    PageRequest.of(page, Math.min(size, 100), Sort.by(dir, sort));
-            org.springframework.data.domain.Page<Paciente> resultado =
-                    pacienteService.listarPaginado(pageable);
-            resultado.getContent().forEach(this::mascararDadosSensiveis);
-            return ResponseEntity.ok(resultado);
+        if (page < 0) {
+            throw new BadRequestException("Página deve ser maior ou igual a zero");
         }
-
-        List<Paciente> pacientes = pacienteService.obterTodosPacientes();
-        pacientes.forEach(this::mascararDadosSensiveis);
-        return ResponseEntity.ok(pacientes);
+        if (size == null || size < 1) {
+            throw new BadRequestException("Tamanho da página deve ser maior que zero");
+        }
+        if (!CAMPOS_ORDENACAO_PERMITIDOS.contains(sort)) {
+            throw new BadRequestException("Campo de ordenação não permitido");
+        }
+        Sort.Direction dir = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        org.springframework.data.domain.Pageable pageable =
+                PageRequest.of(page, Math.min(size, 100), Sort.by(dir, sort));
+        org.springframework.data.domain.Page<Paciente> resultado =
+                pacienteService.listarPaginado(pageable);
+        resultado.getContent().forEach(this::mascararDadosSensiveis);
+        return ResponseEntity.ok(resultado);
     }
 
     // GET paciente por ID
