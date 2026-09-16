@@ -87,6 +87,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Flyway para versionamento reproduzível de schema -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
         <!-- Lombok para reduzir boilerplate -->
         <dependency>
             <groupId>org.projectlombok</groupId>
