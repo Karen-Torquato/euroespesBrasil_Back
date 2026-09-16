@@ -1,0 +1,232 @@
+# Exemplos de Requisições HTTP para Testar a API
+
+## Baseado em: http://localhost:8080
+
+### 📋 PACIENTES
+
+#### 1. Listar todos os pacientes
+```http
+GET /api/pacientes HTTP/1.1
+Host: localhost:8080
+```
+
+#### 2. Obter paciente específico
+```http
+GET /api/pacientes/1 HTTP/1.1
+Host: localhost:8080
+```
+
+#### 3. Criar novo paciente (ativo)
+```http
+POST /api/pacientes HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "nome": "João Silva",
+  "cpf": "12345678900",
+  "telefone": "11999999999",
+  "email": "joao@email.com",
+  "endereco": "Rua A, 123",
+  "quantidadeKits": 2,
+  "codigoIdentificacao": "JOAO001",
+  "codigoRastreio": "AA123456789BR",
+  "kitEntregueHoje": "sim",
+  "dataEntrega": "2024-06-27",
+  "statusResultado": "Pendente"
+}
+```
+
+#### 4. Criar rascunho de paciente
+```http
+POST /api/pacientes HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "nome": "Maria Santos",
+  "statusResultado": "Rascunho"
+}
+```
+
+#### 5. Atualizar paciente
+```http
+PUT /api/pacientes/1 HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "dataColetaProcesso": "2024-06-28T10:30:00",
+  "resultado": "Teste normal"
+}
+```
+
+#### 6. Deletar paciente
+```http
+DELETE /api/pacientes/1 HTTP/1.1
+Host: localhost:8080
+```
+
+#### 7. Upload de anexo
+```http
+POST /api/pacientes/1/anexo HTTP/1.1
+Host: localhost:8080
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="arquivo"; filename="resultado.pdf"
+Content-Type: application/pdf
+
+[arquivo binário aqui]
+------WebKitFormBoundary--
+```
+
+#### 8. Download de anexo
+```http
+GET /api/pacientes/1/anexo/download HTTP/1.1
+Host: localhost:8080
+```
+
+### 📦 ESTOQUE
+
+#### 1. Obter estoque + histórico
+```http
+GET /api/estoque HTTP/1.1
+Host: localhost:8080
+```
+
+Resposta esperada:
+```json
+{
+  "totalKits": 98,
+  "historico": [
+    {
+      "id": 1,
+      "tipo": "SAIDA",
+      "quantidade": 2,
+      "motivo": "Retirada para paciente",
+      "data": "2024-06-27T14:30:00"
+    }
+  ]
+}
+```
+
+#### 2. Registrar movimentação (ENTRADA)
+```http
+POST /api/estoque/movimentar HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "tipo": "ENTRADA",
+  "quantidade": 50,
+  "motivo": "Reposição de estoque"
+}
+```
+
+#### 3. Registrar movimentação (SAIDA)
+```http
+POST /api/estoque/movimentar HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "tipo": "SAIDA",
+  "quantidade": 5,
+  "motivo": "Descarte de kits danificados"
+}
+```
+
+### ⚠️ Erros Esperados
+
+#### Estoque insuficiente
+```http
+POST /api/pacientes HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "nome": "Teste",
+  "quantidadeKits": 1000,
+  "statusResultado": "Pendente"
+}
+```
+**Resposta 400:**
+```json
+{
+  "mensagem": "Estoque insuficiente"
+}
+```
+
+#### Paciente não encontrado
+```http
+GET /api/pacientes/999 HTTP/1.1
+Host: localhost:8080
+```
+**Resposta 404:** Not Found
+
+#### Campo obrigatório faltando
+```http
+POST /api/pacientes HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "cpf": "12345678900"
+}
+```
+**Resposta 400:**
+```json
+{
+  "mensagem": "Nome é obrigatório"
+}
+```
+
+---
+
+## 🔨 Ferramentas para Testar
+
+### Usando cURL
+```bash
+curl -X GET http://localhost:8080/api/pacientes
+```
+
+### Usando Postman
+1. Importar as requisições acima
+2. Mudar base URL para `http://localhost:8080`
+3. Enviar requisições
+
+### Usando REST Client (VS Code)
+Instale a extensão "REST Client" e use este arquivo (.http) diretamente
+
+---
+
+## 📊 Fluxo de Negócio Exemplo
+
+1. **Criar paciente ativo**
+   ```
+   POST /api/pacientes (quantidadeKits: 2)
+   → Desconta 2 kits do estoque
+   → POST /api/estoque/movimentar (SAIDA, 2 kits)
+   ```
+
+2. **Avançar etapas**
+   ```
+   PUT /api/pacientes/1 (dataColetaProcesso: "2024-06-28T10:30:00")
+   PUT /api/pacientes/1 (dataColetaRealizada: "2024-06-29T15:00:00")
+   PUT /api/pacientes/1 (dataEmMaoBrasil: "2024-06-30T09:00:00")
+   PUT /api/pacientes/1 (dataEnviadoEspanha: "2024-07-01T08:00:00")
+   PUT /api/pacientes/1 (statusResultado: "Concluído")
+   ```
+
+3. **Reposição de estoque**
+   ```
+   POST /api/estoque/movimentar
+   {
+     "tipo": "ENTRADA",
+     "quantidade": 100,
+     "motivo": "Reposição mensal"
+   }
+   ```
+
+
