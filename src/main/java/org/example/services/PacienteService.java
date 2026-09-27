@@ -3,9 +3,13 @@ package org.example.services;
 import org.example.exceptions.BadRequestException;
 import org.example.exceptions.ConflictException;
 import org.example.exceptions.NotFoundException;
+import org.example.models.ItemPedidoRequest;
 import org.example.models.Paciente;
+import org.example.models.PedidoItem;
 import org.example.repositories.PacienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +21,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class PacienteService {
@@ -26,6 +32,12 @@ public class PacienteService {
 
     @Autowired
     private EstoqueService estoqueService;
+
+    @Autowired
+    private ProdutoService produtoService;
+
+    @Autowired
+    private AuditoriaService auditoriaService;
 
         private static final Set<String> STATUS_FINALIZADOS = new HashSet<>(Set.of(
             "RESULTADO PRONTO"
@@ -45,6 +57,7 @@ public class PacienteService {
             if (normalizarConsistenciaFluxoLegado(paciente)) {
                 mudou = true;
             }
+            paciente.getItens().size();
         }
 
         if (mudou) {
@@ -52,6 +65,18 @@ public class PacienteService {
         }
 
         return pacientes;
+    }
+
+    // GET pacientes com paginação
+    @Transactional(readOnly = true)
+    public Page<Paciente> listarPaginado(Pageable pageable) {
+        Page<Paciente> page = pacienteRepository.findAll(pageable);
+        page.getContent().forEach(p -> {
+            preencherTimestampsAusentes(p);
+            normalizarConsistenciaFluxoLegado(p);
+            p.getItens().size();
+        });
+        return page;
     }
 
     // GET paciente por ID
@@ -66,6 +91,7 @@ public class PacienteService {
             if (mudou) {
                 pacienteRepository.save(paciente.get());
             }
+            paciente.get().getItens().size();
         }
         return paciente;
     }
@@ -78,13 +104,23 @@ public class PacienteService {
             throw new BadRequestException("Nome é obrigatório");
         }
 
+        validarCpf(paciente.getCpf());
+        validarDadosContato(paciente);
+
+        boolean temItensPedido = paciente.getItensPedido() != null && !paciente.getItensPedido().isEmpty();
+
+        // Valida código antes de qualquer retorno antecipado
         validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
 
         // Se não for rascunho, valida estoque
         if (isRascunho(paciente.getStatusResultado())) {
             // Rascunho - define statusResultado
             paciente.setStatusResultado("Rascunho");
-            return pacienteRepository.save(paciente);
+            paciente.setItensPedido(null);
+            Paciente salvo = pacienteRepository.save(paciente);
+            auditoriaService.registrar("CRIAR", "PACIENTE", salvo.getId(), "Paciente criado como rascunho");
+            salvo.getItens().size();
+            return salvo;
         }
 
         if (paciente.getStatusResultado() == null || paciente.getStatusResultado().isBlank()) {
@@ -93,9 +129,37 @@ public class PacienteService {
 
         aplicarDatasFluxo(paciente, null);
 
+        if (temItensPedido) {
+            List<ItemPedidoRequest> itensSolicitados = paciente.getItensPedido();
+            int totalKits = itensSolicitados.stream()
+                    .mapToInt(item -> item.getQuantidade() == null ? 0 : item.getQuantidade())
+                    .sum();
+
+            if (totalKits <= 0) {
+                throw new BadRequestException("Informe ao menos um produto com quantidade válida");
+            }
+
+            paciente.setQuantidadeKits(totalKits);
+            paciente.setItensPedido(null);
+            // The backend owns the final code; client-side code is only a preview.
+            paciente.setCodigoIdentificacao(null);
+
+            Paciente salvo = pacienteRepository.save(paciente);
+            List<PedidoItem> itensGerados = produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
+            salvo.setCodigoIdentificacao(itensGerados.get(0).getCodigoGerado());
+            Paciente atualizado = pacienteRepository.save(salvo);
+            auditoriaService.registrar("CRIAR", "PACIENTE", atualizado.getId(), "Paciente criado");
+            atualizado.getItens().size();
+            return atualizado;
+        }
+
+        // Fluxo legado sem produtos cadastrados (compatibilidade)
+        validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
         validarQuantidadeKitsAtivo(paciente.getQuantidadeKits());
         Paciente salvo = pacienteRepository.save(paciente);
+        auditoriaService.registrar("CRIAR", "PACIENTE", salvo.getId(), "Paciente criado");
         estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para paciente " + salvo.getNome());
+        salvo.getItens().size();
         return salvo;
     }
 
@@ -126,6 +190,7 @@ public class PacienteService {
             paciente.setNome(pacienteAtualizado.getNome());
         }
         if (pacienteAtualizado.getCpf() != null) {
+            validarCpf(pacienteAtualizado.getCpf());
             paciente.setCpf(pacienteAtualizado.getCpf());
         }
         if (pacienteAtualizado.getTelefone() != null) {
@@ -183,18 +248,23 @@ public class PacienteService {
             paciente.setResultado(pacienteAtualizado.getResultado());
         }
 
+        validarDadosContato(paciente);
+
         validarCodigoUnicoEdicao(codigoAnterior, paciente.getCodigoIdentificacao(), paciente.getId());
         aplicarDatasFluxo(paciente, statusAnterior);
 
         Paciente salvo = pacienteRepository.save(paciente);
+        auditoriaService.registrar("ALTERAR", "PACIENTE", salvo.getId(), "Dados do paciente alterados");
 
         // Só baixa estoque ao converter de rascunho para paciente final, e apenas após salvar.
         if (eraRascunho && !isRascunho(salvo.getStatusResultado())) {
             validarQuantidadeKitsAtivo(salvo.getQuantidadeKits());
             estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para ativar paciente " + salvo.getNome());
+            salvo.getItens().size();
             return salvo;
         }
 
+        salvo.getItens().size();
         return salvo;
     }
 
@@ -215,11 +285,61 @@ public class PacienteService {
         }
 
         pacienteRepository.deleteById(id);
+        auditoriaService.registrar("EXCLUIR", "PACIENTE", id, "Exclusão administrativa");
+    }
+
+    @Transactional
+    public void anonimizarPaciente(Long id, String motivo) {
+        Paciente paciente = pacienteRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Paciente não encontrado"));
+
+        if (paciente.getAnexoCaminho() != null && !paciente.getAnexoCaminho().isBlank()) {
+            File arquivo = new File(paciente.getAnexoCaminho());
+            if (arquivo.exists() && !arquivo.delete()) {
+                throw new BadRequestException("Não foi possível remover o anexo do paciente");
+            }
+        }
+
+        paciente.setNome("Paciente anonimizado");
+        paciente.setCpf(null);
+        paciente.setTelefone(null);
+        paciente.setEmail(null);
+        paciente.setEndereco(null);
+        paciente.setObservacoes(null);
+        paciente.setCodigoRastreio(null);
+        paciente.setCodigoIdentificacao(null);
+        paciente.setKitEntregueHoje(null);
+        paciente.setResultado(null);
+        paciente.setAnexoNome(null);
+        paciente.setAnexoCaminho(null);
+        pacienteRepository.save(paciente);
+        auditoriaService.registrar("ANONIMIZAR", "PACIENTE", id,
+                motivo == null || motivo.isBlank() ? "Solicitação do titular" : motivo.trim());
+    }
+
+    @Transactional
+    public Map<String, Object> exportarPaciente(Long id) {
+        Paciente paciente = pacienteRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Paciente não encontrado"));
+        auditoriaService.registrar("EXPORTAR", "PACIENTE", id, "Exportação de dados do titular");
+        Map<String, Object> exportacao = new LinkedHashMap<>();
+        exportacao.put("id", paciente.getId());
+        exportacao.put("nome", paciente.getNome());
+        exportacao.put("cpf", paciente.getCpf());
+        exportacao.put("telefone", paciente.getTelefone());
+        exportacao.put("email", paciente.getEmail());
+        exportacao.put("endereco", paciente.getEndereco());
+        exportacao.put("observacoes", paciente.getObservacoes());
+        exportacao.put("codigoIdentificacao", paciente.getCodigoIdentificacao());
+        exportacao.put("statusResultado", paciente.getStatusResultado());
+        exportacao.put("criadoEm", paciente.getCriadoEm());
+        exportacao.put("atualizadoEm", paciente.getAtualizadoEm());
+        return exportacao;
     }
 
     // Salvar anexo
     @Transactional
-    public void salvarAnexo(Long id, String nomeOriginal, String caminho) {
+    public void salvarAnexo(Long id, String nomeOriginal, String caminho, String sha256) {
         Optional<Paciente> paciente = pacienteRepository.findById(id);
         if (paciente.isEmpty()) {
             throw new NotFoundException("Paciente não encontrado");
@@ -237,11 +357,14 @@ public class PacienteService {
 
         p.setAnexoNome(nomeOriginal);
         p.setAnexoCaminho(caminho);
+        p.setAnexoSha256(sha256);
         pacienteRepository.save(p);
+        auditoriaService.registrar("UPLOAD", "ANEXO", id, "Anexo de paciente atualizado");
     }
 
     // Obter anexo
     public Optional<Paciente> obterAnexoPaciente(Long id) {
+        auditoriaService.registrar("DOWNLOAD", "ANEXO", id, "Download de anexo solicitado");
         return pacienteRepository.findById(id);
     }
 
@@ -300,10 +423,7 @@ public class PacienteService {
             return;
         }
 
-        boolean existe = pacienteRepository.findAll().stream()
-                .map(Paciente::getCodigoIdentificacao)
-                .map(this::normalizarCodigo)
-                .anyMatch(codigoNovo::equals);
+        boolean existe = pacienteRepository.existsByCodigoIdentificacao(codigoNovo);
 
         if (existe) {
             throw new ConflictException("Já existe paciente com este código de identificação");
@@ -318,11 +438,7 @@ public class PacienteService {
             return;
         }
 
-        boolean existe = pacienteRepository.findAll().stream()
-                .filter(p -> !p.getId().equals(pacienteId))
-                .map(Paciente::getCodigoIdentificacao)
-                .map(this::normalizarCodigo)
-                .anyMatch(novo::equals);
+        boolean existe = pacienteRepository.existsByCodigoIdentificacaoAndIdNot(novo, pacienteId);
 
         if (existe) {
             throw new ConflictException("Já existe paciente com este código de identificação");
@@ -342,6 +458,47 @@ public class PacienteService {
         if (quantidadeKits == null || quantidadeKits <= 0) {
             throw new BadRequestException("Quantidade de kits deve ser maior que zero para paciente final");
         }
+    }
+
+    private void validarCpf(String cpf) {
+        if (cpf == null || cpf.isBlank()) {
+            return;
+        }
+
+        String digits = cpf.replaceAll("\\D+", "");
+        if (digits.length() != 11 || digits.chars().distinct().count() == 1 || !cpfValido(digits)) {
+            throw new BadRequestException("CPF inválido");
+        }
+    }
+
+    private void validarDadosContato(Paciente paciente) {
+        if (paciente.getTelefone() != null && !paciente.getTelefone().isBlank()) {
+            String telefone = paciente.getTelefone().replaceAll("\\D", "");
+            if (telefone.length() < 10 || telefone.length() > 11) {
+                throw new BadRequestException("Telefone deve ter 10 ou 11 dígitos");
+            }
+        }
+        if (paciente.getEmail() != null && !paciente.getEmail().isBlank()
+                && !paciente.getEmail().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new BadRequestException("E-mail inválido");
+        }
+    }
+
+    private boolean cpfValido(String digits) {
+        int primeiroDigito = calcularDigitoCpf(digits, 9);
+        int segundoDigito = calcularDigitoCpf(digits, 10);
+        return primeiroDigito == Character.digit(digits.charAt(9), 10)
+                && segundoDigito == Character.digit(digits.charAt(10), 10);
+    }
+
+    private int calcularDigitoCpf(String digits, int tamanhoBase) {
+        int soma = 0;
+        int peso = tamanhoBase + 1;
+        for (int indice = 0; indice < tamanhoBase; indice++) {
+            soma += Character.digit(digits.charAt(indice), 10) * peso--;
+        }
+        int resto = soma % 11;
+        return resto < 2 ? 0 : 11 - resto;
     }
 
     private void aplicarDatasFluxo(Paciente paciente, String statusAnterior) {

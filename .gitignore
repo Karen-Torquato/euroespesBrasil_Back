@@ -37,3 +37,23 @@ build/
 
 ### Mac OS ###
 .DS_Store
+Thumbs.db
+
+# ─── Banco de dados local — dados de pacientes (NUNCA versionar) ────
+data/
+*.mv.db
+*.trace.db
+
+# ─── Uploads de pacientes — dados sensíveis ─────────────────────────
+uploads/
+
+# ─── Segredos e configs de produção — NUNCA versionar ───────────────
+application-secrets.properties
+*.env
+.env
+.env.*
+!.env.prod.example
+
+# ─── Logs ────────────────────────────────────────────────────────────
+*.log
+logs/

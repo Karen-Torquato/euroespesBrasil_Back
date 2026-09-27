@@ -1,0 +1,1 @@
+ALTER TABLE pacientes ADD COLUMN anexo_sha256 VARCHAR(64);
