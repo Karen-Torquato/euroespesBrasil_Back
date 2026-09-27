@@ -11,6 +11,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +24,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
 import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 @RestController
 @RequestMapping("/api/pacientes")
@@ -59,6 +62,9 @@ public class PacienteController {
         if (size == null || size < 1) {
             throw new BadRequestException("Tamanho da página deve ser maior que zero");
         }
+        if (size > 100) {
+            throw new BadRequestException("Tamanho máximo da página é 100");
+        }
         if (!CAMPOS_ORDENACAO_PERMITIDOS.contains(sort)) {
             throw new BadRequestException("Campo de ordenação não permitido");
         }
@@ -73,6 +79,7 @@ public class PacienteController {
 
     // GET paciente por ID
     @GetMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<Paciente> obterPacientePorId(@PathVariable Long id) {
         Paciente paciente = pacienteService.obterPacientePorId(id)
                 .orElseThrow(() -> new NotFoundException("Paciente não encontrado"));
@@ -100,9 +107,25 @@ public class PacienteController {
 
     // DELETE paciente
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deletarPaciente(@PathVariable Long id) {
         pacienteService.deletarPaciente(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}/anonimizar")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> anonimizarPaciente(
+            @PathVariable Long id,
+            @RequestParam(required = false) String motivo) {
+        pacienteService.anonimizarPaciente(id, motivo);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/exportar")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> exportarPaciente(@PathVariable Long id) {
+        return ResponseEntity.ok(pacienteService.exportarPaciente(id));
     }
 
     // POST upload de anexo
@@ -152,7 +175,12 @@ public class PacienteController {
             }
 
             Files.write(caminhoFinal, conteudo);
-            pacienteService.salvarAnexo(id, nomeOriginal, caminhoFinal.toString());
+            try {
+                pacienteService.salvarAnexo(id, nomeOriginal, caminhoFinal.toString(), sha256(conteudo));
+            } catch (RuntimeException exception) {
+                Files.deleteIfExists(caminhoFinal);
+                throw exception;
+            }
 
             Paciente paciente = pacienteService.obterPacientePorId(id)
                     .orElseThrow(() -> new NotFoundException("Paciente não encontrado"));
@@ -218,6 +246,19 @@ public class PacienteController {
         };
         if (!valido) {
             throw new BadRequestException("Conteúdo do arquivo não corresponde à extensão declarada");
+        }
+    }
+
+    private String sha256(byte[] conteudo) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(conteudo);
+            StringBuilder hash = new StringBuilder(digest.length * 2);
+            for (byte value : digest) {
+                hash.append(String.format("%02x", value));
+            }
+            return hash.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 indisponível", exception);
         }
     }
 

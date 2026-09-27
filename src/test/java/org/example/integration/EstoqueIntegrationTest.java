@@ -40,12 +40,12 @@ class EstoqueIntegrationTest {
     @BeforeAll
     static void obterToken(@Autowired MockMvc mockMvc,
                            @Autowired ObjectMapper objectMapper) throws Exception {
-        String resp = mockMvc.perform(post("/api/auth/login")
+        var result = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 Map.of("username", "admin", "senha", "Admin@12345"))))
-                .andReturn().getResponse().getContentAsString();
-        token = objectMapper.readTree(resp).get("token").asText();
+                .andReturn();
+        token = result.getResponse().getCookie("euroespes_access").getValue();
     }
 
     // ─── Segurança ───────────────────────────────────────────────────────────────

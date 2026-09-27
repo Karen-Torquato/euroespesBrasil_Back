@@ -46,13 +46,13 @@ class PacienteIntegrationTest {
     @BeforeAll
     static void obterToken(@Autowired MockMvc mockMvc,
                            @Autowired ObjectMapper objectMapper) throws Exception {
-        String resp = mockMvc.perform(post("/api/auth/login")
+        var result = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 Map.of("username", "admin", "senha", "Admin@12345"))))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        token = objectMapper.readTree(resp).get("token").asText();
+                .andReturn();
+        token = result.getResponse().getCookie("euroespes_access").getValue();
     }
 
     // ─── Criação de rascunho ─────────────────────────────────────────────────────
@@ -330,5 +330,28 @@ class PacienteIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNoContent());
     }
+
+        @Test
+        @Order(19)
+        @DisplayName("exportar paciente deve retornar dados LGPD para admin")
+        void exportarPacienteRetornaDados() throws Exception {
+                MvcResult result = mockMvc.perform(post("/api/pacientes")
+                                                .header("Authorization", "Bearer " + token)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(Map.of(
+                                                                "nome", "Paciente Exportacao",
+                                                                "telefone", "11999990000",
+                                                                "email", "exportacao@teste.com",
+                                                                "statusResultado", "Rascunho"))))
+                                .andExpect(status().isCreated())
+                                .andReturn();
+                long id = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+
+                mockMvc.perform(get("/api/pacientes/" + id + "/exportar")
+                                                .header("Authorization", "Bearer " + token))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.nome").value("Paciente Exportacao"))
+                                .andExpect(jsonPath("$.email").value("exportacao@teste.com"));
+        }
 }
 

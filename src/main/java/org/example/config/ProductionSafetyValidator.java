@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.List;
+import org.example.security.PiiCrypto;
 
 @Component
 public class ProductionSafetyValidator implements CommandLineRunner {
@@ -31,6 +32,9 @@ public class ProductionSafetyValidator implements CommandLineRunner {
     @Value("${app.security.require-ssl:false}")
     private boolean requireSsl;
 
+    @Value("${spring.datasource.url:}")
+    private String datasourceUrl;
+
     public ProductionSafetyValidator(Environment environment) {
         this.environment = environment;
     }
@@ -49,8 +53,16 @@ public class ProductionSafetyValidator implements CommandLineRunner {
             throw new IllegalStateException("Configuracao insegura: JWT_SECRET padrao detectado em profile prod");
         }
 
+        if (PiiCrypto.isDefaultKey()) {
+            throw new IllegalStateException("Configuracao insegura: PII_ENCRYPTION_KEY deve vir do ambiente em profile prod");
+        }
+
         if (!requireSsl) {
             throw new IllegalStateException("Configuracao insegura: HTTPS deve ser obrigatorio em profile prod");
+        }
+
+        if (datasourceUrl == null || !datasourceUrl.contains("sslmode=require")) {
+            throw new IllegalStateException("Configuracao insegura: DB_URL deve exigir sslmode=require em profile prod");
         }
 
         List<String> origins = Arrays.stream(corsOrigins.split(","))

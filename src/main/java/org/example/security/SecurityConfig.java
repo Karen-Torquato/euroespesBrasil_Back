@@ -13,6 +13,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -26,6 +29,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final LoginRateLimitFilter loginRateLimitFilter;
+    private final UploadRateLimitFilter uploadRateLimitFilter;
     private final SecurityAuditFilter securityAuditFilter;
 
     @Value("${app.cors.allowed-origins}")
@@ -36,17 +40,23 @@ public class SecurityConfig {
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           LoginRateLimitFilter loginRateLimitFilter,
+                          UploadRateLimitFilter uploadRateLimitFilter,
                           SecurityAuditFilter securityAuditFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.loginRateLimitFilter = loginRateLimitFilter;
+        this.uploadRateLimitFilter = uploadRateLimitFilter;
         this.securityAuditFilter = securityAuditFilter;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // CSRF desabilitado — API stateless com JWT
-            .csrf(csrf -> csrf.disable())
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .ignoringRequestMatchers(
+                    new AntPathRequestMatcher("/api/auth/login"),
+                    new AntPathRequestMatcher("/api/auth/refresh"),
+                    bearerRequestMatcher()))
 
             // CORS centralizado nesta config
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -107,11 +117,16 @@ public class SecurityConfig {
             )
 
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(uploadRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             // Filtro JWT antes do filtro padrão
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(securityAuditFilter, JwtAuthFilter.class);
 
         return http.build();
+    }
+
+    private RequestMatcher bearerRequestMatcher() {
+        return request -> request.getHeader("Authorization") != null;
     }
 
     @Bean
@@ -128,13 +143,9 @@ public class SecurityConfig {
                 .filter(value -> !value.isBlank())
                 .toList();
 
-        if (origins.isEmpty()) {
-            origins = List.of("http://localhost:4200", "http://127.0.0.1:4200");
-        }
-
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-XSRF-TOKEN"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 

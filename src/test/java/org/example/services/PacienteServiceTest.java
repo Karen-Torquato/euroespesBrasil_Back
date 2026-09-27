@@ -35,6 +35,9 @@ class PacienteServiceTest {
     @Mock
     private EstoqueService estoqueService;
 
+    @Mock
+    private AuditoriaService auditoriaService;
+
     @InjectMocks
     private PacienteService pacienteService;
 

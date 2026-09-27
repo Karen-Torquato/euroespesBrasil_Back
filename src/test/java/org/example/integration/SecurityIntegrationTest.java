@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import jakarta.servlet.http.Cookie;
 import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.Map;
@@ -51,7 +52,7 @@ class SecurityIntegrationTest {
                             .content(objectMapper.writeValueAsString(
                                     Map.of("username", "admin", "senha", "Admin@12345"))))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.token").exists())
+                    .andExpect(cookie().exists("euroespes_access"))
                     .andExpect(jsonPath("$.role").value("ROLE_ADMIN"));
         }
 
@@ -215,12 +216,12 @@ class SecurityIntegrationTest {
     class SecurityHeaders {
 
         private String loginEObterToken() throws Exception {
-            String resp = mockMvc.perform(post("/api/auth/login")
+                var result = mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(
-                                    Map.of("username", "admin", "senha", "Admin@12345"))))
-                    .andReturn().getResponse().getContentAsString();
-            return objectMapper.readTree(resp).get("token").asText();
+                            Map.of("username", "admin", "senha", "Admin@12345"))))
+                    .andReturn();
+                return result.getResponse().getCookie("euroespes_access").getValue();
         }
 
         @Test
@@ -260,12 +261,12 @@ class SecurityIntegrationTest {
         @Test
         @DisplayName("com token válido GET /api/pacientes deve retornar 200")
         void comTokenValidoDeveRetornar200() throws Exception {
-            String resp = mockMvc.perform(post("/api/auth/login")
+                var result = mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(
-                                    Map.of("username", "admin", "senha", "Admin@12345"))))
-                    .andReturn().getResponse().getContentAsString();
-            String token = objectMapper.readTree(resp).get("token").asText();
+                            Map.of("username", "admin", "senha", "Admin@12345"))))
+                    .andReturn();
+                String token = result.getResponse().getCookie("euroespes_access").getValue();
 
             mockMvc.perform(get("/api/pacientes")
                             .header("Authorization", "Bearer " + token))
@@ -275,12 +276,12 @@ class SecurityIntegrationTest {
         @Test
         @DisplayName("com token válido GET /api/estoque deve retornar 200")
         void comTokenValidoEstoqueDeveRetornar200() throws Exception {
-            String resp = mockMvc.perform(post("/api/auth/login")
+                var result = mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(
-                                    Map.of("username", "admin", "senha", "Admin@12345"))))
-                    .andReturn().getResponse().getContentAsString();
-            String token = objectMapper.readTree(resp).get("token").asText();
+                            Map.of("username", "admin", "senha", "Admin@12345"))))
+                    .andReturn();
+                String token = result.getResponse().getCookie("euroespes_access").getValue();
 
             mockMvc.perform(get("/api/estoque")
                             .header("Authorization", "Bearer " + token))

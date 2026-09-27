@@ -12,6 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import jakarta.servlet.http.Cookie;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -28,9 +29,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7).trim();
+        String token = bearerToken(request.getHeader("Authorization"));
+        if (token == null) {
+            token = cookieToken(request.getCookies());
+        }
+        if (token != null) {
             if (jwtUtil.isTokenValido(token)) {
                 String username = jwtUtil.extrairUsername(token);
                 String role = jwtUtil.extrairRole(token);
@@ -43,6 +46,22 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String bearerToken(String header) {
+        return header != null && header.startsWith("Bearer ") ? header.substring(7).trim() : null;
+    }
+
+    private String cookieToken(Cookie[] cookies) {
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if ("euroespes_access".equals(cookie.getName()) && !cookie.getValue().isBlank()) {
+                return cookie.getValue();
+            }
+        }
+        return null;
     }
 }
 

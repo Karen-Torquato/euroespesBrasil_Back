@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.example.security.PiiCrypto;
 
 @Entity
 @Table(name = "pacientes", indexes = {
@@ -33,19 +34,29 @@ public class Paciente {
     private String nome;
 
     @Size(max = 14, message = "CPF inválido")
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 512, columnDefinition = "VARCHAR(512)")
     private String cpf;
 
     @Size(max = 20, message = "Telefone muito longo")
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 512, columnDefinition = "VARCHAR(512)")
     private String telefone;
 
     @Email(message = "E-mail inválido")
     @Size(max = 254, message = "E-mail muito longo")
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 1024, columnDefinition = "VARCHAR(1024)")
     private String email;
 
     @Size(max = 500, message = "Endereço muito longo")
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 2048, columnDefinition = "VARCHAR(2048)")
     private String endereco;
 
     @Size(max = 2000, message = "Observações muito longas")
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 8192, columnDefinition = "VARCHAR(8192)")
     private String observacoes;
 
     @Min(value = 0, message = "Quantidade de kits não pode ser negativa")
@@ -82,6 +93,8 @@ public class Paciente {
     private String statusResultado;
 
     @Size(max = 5000)
+    @Convert(converter = PiiCrypto.class)
+    @Column(length = 16384, columnDefinition = "VARCHAR(16384)")
     private String resultado;
 
     // Campos legados (não usados ativamente)
@@ -94,6 +107,9 @@ public class Paciente {
 
     @Size(max = 500)
     private String anexoCaminho;
+
+    @Column(length = 64)
+    private String anexoSha256;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime criadoEm;

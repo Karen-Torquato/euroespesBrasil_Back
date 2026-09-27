@@ -47,13 +47,13 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_comCredenciaisValidas_deveRetornarToken() throws Exception {
+    void login_comCredenciaisValidas_deveRetornarCookieSeguro() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 Map.of("username", "testuser", "senha", "Test@12345"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(cookie().exists("euroespes_access"))
                 .andExpect(jsonPath("$.role").value("ROLE_ADMIN"));
     }
 
@@ -75,23 +75,18 @@ class AuthControllerTest {
     }
 
     @Test
-    void refresh_comTokenValido_deveRetornarNovoToken() throws Exception {
-        // Primeiro faz login para obter token
-        String response = mockMvc.perform(post("/api/auth/login")
+        void refresh_comSessaoValida_deveRotacionarCookie() throws Exception {
+        var login = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 Map.of("username", "testuser", "senha", "Test@12345"))))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
+            .andReturn();
 
-        String token = objectMapper.readTree(response).get("token").asText();
-
-        // Usa o token para refresh
         mockMvc.perform(post("/api/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("token", token))))
+                .cookie(login.getResponse().getCookie("euroespes_access")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty());
+            .andExpect(cookie().exists("euroespes_access"));
     }
 
     @Test
