@@ -59,7 +59,7 @@ public class PiiCrypto implements AttributeConverter<String, String> {
 
     public static boolean isDefaultKey() {
         String configured = configuredKey();
-        return configured == null || configured.isBlank() || DEV_KEY.equals(configured);
+        return configured == null || configured.isBlank();
     }
 
     private static SecretKeySpec loadKey() {

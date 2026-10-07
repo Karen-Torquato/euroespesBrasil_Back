@@ -1,0 +1,4 @@
+3b2696da82526900ea8399416a82522ee82880e8:src/main/java/org/example/security/PiiCrypto.java:generic-api-key:18
+3b2696da82526900ea8399416a82522ee82880e8:src/test/java/org/example/security/PiiCryptoTest.java:generic-api-key:49
+c4bd85a5a05d74fda9c683007fcf26a468e7ad51:SECURITY.md:generic-api-key:22
+c4bd85a5a05d74fda9c683007fcf26a468e7ad51:src/test/java/org/example/integration/SecurityIntegrationTest.java:generic-api-key:137
