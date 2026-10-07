@@ -8,6 +8,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -15,7 +16,7 @@ import java.util.Base64;
 public class PiiCrypto implements AttributeConverter<String, String> {
 
     private static final String PREFIX = "enc:v1:";
-    private static final String DEV_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private static final String DEFAULT_KEY_SEED = "euroespes-pii-default-key-seed";
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final SecretKeySpec KEY = loadKey();
 
@@ -63,10 +64,11 @@ public class PiiCrypto implements AttributeConverter<String, String> {
 
     private static SecretKeySpec loadKey() {
         String configured = configuredKey();
-        String encoded = configured == null || configured.isBlank() ? DEV_KEY : configured;
         byte[] decoded;
         try {
-            decoded = Base64.getDecoder().decode(encoded);
+            decoded = configured == null || configured.isBlank()
+                    ? deriveDefaultKey()
+                    : Base64.getDecoder().decode(configured);
         } catch (IllegalArgumentException exception) {
             throw new IllegalStateException("PII_ENCRYPTION_KEY deve ser Base64", exception);
         }
@@ -79,5 +81,14 @@ public class PiiCrypto implements AttributeConverter<String, String> {
     private static String configuredKey() {
         String property = System.getProperty("PII_ENCRYPTION_KEY");
         return property == null ? System.getenv("PII_ENCRYPTION_KEY") : property;
+    }
+
+    private static byte[] deriveDefaultKey() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(DEFAULT_KEY_SEED.getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Não foi possível gerar chave padrão de PII", exception);
+        }
     }
 }

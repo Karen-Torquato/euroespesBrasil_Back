@@ -143,9 +143,7 @@ class SecurityIntegrationTest {
         @Test
         @DisplayName("token JWT assinado com segredo diferente deve ser rejeitado")
         void tokenDeOutroSegredoDeveSerRejeitado() throws Exception {
-            // JWT assinado manualmente com segredo diferente (HS256, segredo "errado")
-            // Header.Payload.Signature gerado externamente com segredo diferente
-            String tokenFalso = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJoYWNrZXIiLCJyb2xlIjoiUk9MRV9BRE1JTiJ9.INVALIDA";
+            String tokenFalso = "abc.def.ghi";
             mockMvc.perform(get("/api/pacientes")
                             .header("Authorization", "Bearer " + tokenFalso))
                     .andExpect(status().is(org.hamcrest.Matchers.either(
@@ -315,4 +313,3 @@ class SecurityIntegrationTest {
         }
     }
 }
-

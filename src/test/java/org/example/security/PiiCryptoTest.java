@@ -4,6 +4,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("PiiCrypto — proteção de PII")
@@ -46,7 +50,17 @@ class PiiCryptoTest {
     @Test
     @DisplayName("não deve detectar chave default quando propriedade customizada existir")
     void naoDetectaChaveDefaultComPropriedadeCustomizada() {
-        System.setProperty("PII_ENCRYPTION_KEY", "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTY3ODkwMTIz");
+        System.setProperty("PII_ENCRYPTION_KEY", chaveBase64DeTeste());
         assertThat(PiiCrypto.isDefaultKey()).isFalse();
+    }
+
+    private String chaveBase64DeTeste() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] key = digest.digest("pii-test-key-seed".getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(key);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }

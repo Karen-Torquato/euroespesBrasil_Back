@@ -19,7 +19,7 @@
 Resposta de sucesso (`200 OK`):
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "token": "[JWT_TOKEN]",
   "role": "ROLE_ADMIN",
   "username": "admin"
 }
@@ -161,4 +161,3 @@ com a URL real do frontend (ex.: `https://app.euroespesbrasilapp.com.br`).
 - [ ] Exibir CPF sempre mascarado como recebido da API
 - [ ] Não enviar arquivos maiores que 10MB ou fora das extensões permitidas
 - [ ] Em produção, usar **HTTPS** (o backend rejeitará origens não autorizadas)
-
