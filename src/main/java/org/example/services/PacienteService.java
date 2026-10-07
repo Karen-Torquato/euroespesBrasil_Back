@@ -106,17 +106,23 @@ public class PacienteService {
 
         validarCpf(paciente.getCpf());
         validarDadosContato(paciente);
+        if (paciente.getCodigoIdentificacao() != null && !paciente.getCodigoIdentificacao().isBlank()) {
+            paciente.setCodigoIdentificacao(paciente.getCodigoIdentificacao().trim());
+            validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
+        }
+
+        boolean rascunho = isRascunho(paciente.getStatusResultado());
+        if (!rascunho) {
+            validarCpfObrigatorio(paciente.getCpf());
+            validarCodigoIdentificacaoObrigatorio(paciente.getCodigoIdentificacao());
+        }
 
         boolean temItensPedido = paciente.getItensPedido() != null && !paciente.getItensPedido().isEmpty();
 
-        // Valida código antes de qualquer retorno antecipado
-        validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
-
         // Se não for rascunho, valida estoque
-        if (isRascunho(paciente.getStatusResultado())) {
+        if (rascunho) {
             // Rascunho - define statusResultado
             paciente.setStatusResultado("Rascunho");
-            paciente.setItensPedido(null);
             Paciente salvo = pacienteRepository.save(paciente);
             auditoriaService.registrar("CRIAR", "PACIENTE", salvo.getId(), "Paciente criado como rascunho");
             salvo.getItens().size();
@@ -129,36 +135,12 @@ public class PacienteService {
 
         aplicarDatasFluxo(paciente, null);
 
-        if (temItensPedido) {
-            List<ItemPedidoRequest> itensSolicitados = paciente.getItensPedido();
-            int totalKits = itensSolicitados.stream()
-                    .mapToInt(item -> item.getQuantidade() == null ? 0 : item.getQuantidade())
-                    .sum();
-
-            if (totalKits <= 0) {
-                throw new BadRequestException("Informe ao menos um produto com quantidade válida");
-            }
-
-            paciente.setQuantidadeKits(totalKits);
-            paciente.setItensPedido(null);
-            // The backend owns the final code; client-side code is only a preview.
-            paciente.setCodigoIdentificacao(null);
-
-            Paciente salvo = pacienteRepository.save(paciente);
-            List<PedidoItem> itensGerados = produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
-            salvo.setCodigoIdentificacao(itensGerados.get(0).getCodigoGerado());
-            Paciente atualizado = pacienteRepository.save(salvo);
-            auditoriaService.registrar("CRIAR", "PACIENTE", atualizado.getId(), "Paciente criado");
-            atualizado.getItens().size();
-            return atualizado;
+        if (!temItensPedido) {
+            throw new BadRequestException("Selecione ao menos um produto para concluir o cadastro");
         }
 
-        // Fluxo legado sem produtos cadastrados (compatibilidade)
-        validarCodigoUnicoNovoPaciente(paciente.getCodigoIdentificacao());
-        validarQuantidadeKitsAtivo(paciente.getQuantidadeKits());
-        Paciente salvo = pacienteRepository.save(paciente);
+        Paciente salvo = salvarComItensEPedido(paciente, paciente.getItensPedido());
         auditoriaService.registrar("CRIAR", "PACIENTE", salvo.getId(), "Paciente criado");
-        estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para paciente " + salvo.getNome());
         salvo.getItens().size();
         return salvo;
     }
@@ -175,6 +157,7 @@ public class PacienteService {
         boolean eraRascunho = isRascunho(paciente.getStatusResultado());
         String statusAnterior = paciente.getStatusResultado();
         String codigoAnterior = paciente.getCodigoIdentificacao();
+        List<ItemPedidoRequest> itensPedidoRecebidos = pacienteAtualizado.getItensPedido();
 
         if (!eraRascunho && isRascunho(pacienteAtualizado.getStatusResultado())) {
             throw new ConflictException("Paciente final não pode voltar para rascunho");
@@ -191,6 +174,9 @@ public class PacienteService {
         }
         if (pacienteAtualizado.getCpf() != null) {
             validarCpf(pacienteAtualizado.getCpf());
+            if (!isRascunho(paciente.getStatusResultado()) && pacienteAtualizado.getCpf().isBlank()) {
+                throw new BadRequestException("CPF é obrigatório");
+            }
             paciente.setCpf(pacienteAtualizado.getCpf());
         }
         if (pacienteAtualizado.getTelefone() != null) {
@@ -212,6 +198,14 @@ public class PacienteService {
             paciente.setCodigoRastreio(pacienteAtualizado.getCodigoRastreio());
         }
         if (pacienteAtualizado.getCodigoIdentificacao() != null) {
+            if (pacienteAtualizado.getCodigoIdentificacao().isBlank()) {
+                if (!isRascunho(paciente.getStatusResultado())) {
+                    throw new BadRequestException("Código de identificação é obrigatório");
+                }
+            } else {
+                pacienteAtualizado.setCodigoIdentificacao(pacienteAtualizado.getCodigoIdentificacao().trim());
+                validarCodigoUnicoEdicao(codigoAnterior, pacienteAtualizado.getCodigoIdentificacao(), paciente.getId());
+            }
             paciente.setCodigoIdentificacao(pacienteAtualizado.getCodigoIdentificacao());
         }
         if (pacienteAtualizado.getKitEntregueHoje() != null) {
@@ -248,22 +242,27 @@ public class PacienteService {
             paciente.setResultado(pacienteAtualizado.getResultado());
         }
 
+        validarNaoPularEtapasNoPayload(paciente, pacienteAtualizado);
         validarDadosContato(paciente);
 
         validarCodigoUnicoEdicao(codigoAnterior, paciente.getCodigoIdentificacao(), paciente.getId());
         aplicarDatasFluxo(paciente, statusAnterior);
 
-        Paciente salvo = pacienteRepository.save(paciente);
-        auditoriaService.registrar("ALTERAR", "PACIENTE", salvo.getId(), "Dados do paciente alterados");
-
-        // Só baixa estoque ao converter de rascunho para paciente final, e apenas após salvar.
-        if (eraRascunho && !isRascunho(salvo.getStatusResultado())) {
-            validarQuantidadeKitsAtivo(salvo.getQuantidadeKits());
-            estoqueService.registrarMovimentacao("SAIDA", salvo.getQuantidadeKits(), "Retirada para ativar paciente " + salvo.getNome());
+        // Ao sair de rascunho, sempre usa produtos do pedido para gerar código no backend.
+        if (eraRascunho && !isRascunho(paciente.getStatusResultado())) {
+            validarCpfObrigatorio(paciente.getCpf());
+            validarCodigoIdentificacaoObrigatorio(paciente.getCodigoIdentificacao());
+            if (itensPedidoRecebidos == null || itensPedidoRecebidos.isEmpty()) {
+                throw new BadRequestException("Selecione ao menos um produto para concluir o cadastro");
+            }
+            Paciente salvo = salvarComItensEPedido(paciente, itensPedidoRecebidos);
+            auditoriaService.registrar("ALTERAR", "PACIENTE", salvo.getId(), "Dados do paciente alterados");
             salvo.getItens().size();
             return salvo;
         }
 
+        Paciente salvo = pacienteRepository.save(paciente);
+        auditoriaService.registrar("ALTERAR", "PACIENTE", salvo.getId(), "Dados do paciente alterados");
         salvo.getItens().size();
         return salvo;
     }
@@ -418,7 +417,7 @@ public class PacienteService {
     }
 
     private void validarCodigoUnicoNovoPaciente(String codigoIdentificacao) {
-        String codigoNovo = normalizarCodigo(codigoIdentificacao);
+        String codigoNovo = normalizarCodigoManual(codigoIdentificacao);
         if (codigoNovo == null) {
             return;
         }
@@ -430,9 +429,21 @@ public class PacienteService {
         }
     }
 
+    private void validarCpfObrigatorio(String cpf) {
+        if (cpf == null || cpf.isBlank()) {
+            throw new BadRequestException("CPF é obrigatório");
+        }
+    }
+
+    private void validarCodigoIdentificacaoObrigatorio(String codigoIdentificacao) {
+        if (codigoIdentificacao == null || codigoIdentificacao.isBlank()) {
+            throw new BadRequestException("Código de identificação é obrigatório");
+        }
+    }
+
     private void validarCodigoUnicoEdicao(String codigoAnterior, String codigoNovoAtual, Long pacienteId) {
-        String anterior = normalizarCodigo(codigoAnterior);
-        String novo = normalizarCodigo(codigoNovoAtual);
+        String anterior = normalizarCodigoManual(codigoAnterior);
+        String novo = normalizarCodigoManual(codigoNovoAtual);
 
         if (novo == null || novo.equals(anterior)) {
             return;
@@ -445,12 +456,32 @@ public class PacienteService {
         }
     }
 
-    private String normalizarCodigo(String codigo) {
+    private String normalizarCodigoManual(String codigo) {
         if (codigo == null || codigo.isBlank()) {
             return null;
         }
-        String digits = codigo.replaceAll("\\D+", "");
-        return digits.isBlank() ? null : digits;
+        String trimmed = codigo.trim();
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private Paciente salvarComItensEPedido(Paciente paciente, List<ItemPedidoRequest> itensSolicitados) {
+        int totalKits = itensSolicitados.stream()
+                .mapToInt(item -> item.getQuantidade() == null ? 0 : item.getQuantidade())
+                .sum();
+
+        if (totalKits <= 0) {
+            throw new BadRequestException("Informe ao menos um produto com quantidade válida");
+        }
+
+        paciente.setQuantidadeKits(totalKits);
+        paciente.setItensPedido(null);
+
+        Paciente salvo = pacienteRepository.save(paciente);
+        List<PedidoItem> itensGerados = produtoService.baixarEstoqueEGerarItens(salvo, itensSolicitados);
+        if (itensGerados.isEmpty()) {
+            throw new BadRequestException("Selecione ao menos um produto para concluir o cadastro");
+        }
+        return pacienteRepository.save(salvo);
     }
 
 
@@ -499,6 +530,24 @@ public class PacienteService {
         }
         int resto = soma % 11;
         return resto < 2 ? 0 : 11 - resto;
+    }
+
+    private void validarNaoPularEtapasNoPayload(Paciente pacienteMesclado, Paciente payloadAtualizacao) {
+        if (!isBlank(payloadAtualizacao.getDataEntrega()) && isBlank(pacienteMesclado.getDataSaidaEstoque())) {
+            throw new ConflictException("Conclua a etapa 'Kit saiu do estoque' antes da etapa de entrega");
+        }
+        if (!isBlank(payloadAtualizacao.getDataColetaProcesso()) && isBlank(pacienteMesclado.getDataEntrega())) {
+            throw new ConflictException("Conclua a etapa de entrega antes de 'Coleta em processo'");
+        }
+        if (!isBlank(payloadAtualizacao.getDataColetaRealizada()) && isBlank(pacienteMesclado.getDataColetaProcesso())) {
+            throw new ConflictException("Conclua 'Coleta em processo' antes de 'Coleta realizada'");
+        }
+        if (!isBlank(payloadAtualizacao.getDataEmMaoBrasil()) && isBlank(pacienteMesclado.getDataColetaRealizada())) {
+            throw new ConflictException("Conclua 'Coleta realizada' antes de 'Em mão Euroespes Brasil'");
+        }
+        if (!isBlank(payloadAtualizacao.getDataEnviadoEspanha()) && isBlank(pacienteMesclado.getDataEmMaoBrasil())) {
+            throw new ConflictException("Conclua 'Em mão Euroespes Brasil' antes de 'Enviado para Euroespes Espanha'");
+        }
     }
 
     private void aplicarDatasFluxo(Paciente paciente, String statusAnterior) {
@@ -557,6 +606,9 @@ public class PacienteService {
         }
         if (!isBlank(paciente.getDataEnviadoEspanha()) && isBlank(paciente.getDataEmMaoBrasil())) {
             throw new ConflictException("Conclua 'Em mão Euroespes Brasil' antes de 'Enviado para Euroespes Espanha'");
+        }
+        if (!isBlank(paciente.getDataEnviadoEspanha()) && isBlank(paciente.getCodigoRastreio())) {
+            throw new BadRequestException("Código de rastreio é obrigatório para concluir o envio para Euroespes Espanha");
         }
 
         paciente.setKitEntregueHoje(isBlank(paciente.getDataEntrega()) ? "nao" : "sim");
@@ -712,4 +764,3 @@ public class PacienteService {
         return mudou;
     }
 }
-

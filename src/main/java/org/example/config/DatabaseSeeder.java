@@ -2,11 +2,14 @@ package org.example.config;
 
 import org.example.models.Estoque;
 import org.example.models.MovimentacaoEstoque;
+import org.example.models.Permissao;
 import org.example.models.Paciente;
 import org.example.models.Usuario;
 import org.example.repositories.EstoqueRepository;
 import org.example.repositories.MovimentacaoEstoqueRepository;
+import org.example.repositories.PermissaoRepository;
 import org.example.repositories.PacienteRepository;
+import org.example.repositories.UsuarioPermissaoRepository;
 import org.example.repositories.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -28,6 +31,8 @@ public class DatabaseSeeder implements CommandLineRunner {
     private final PacienteRepository pacienteRepository;
     private final EstoqueRepository estoqueRepository;
     private final MovimentacaoEstoqueRepository movimentacaoEstoqueRepository;
+    private final PermissaoRepository permissaoRepository;
+    private final UsuarioPermissaoRepository usuarioPermissaoRepository;
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -47,12 +52,16 @@ public class DatabaseSeeder implements CommandLineRunner {
             PacienteRepository pacienteRepository,
             EstoqueRepository estoqueRepository,
             MovimentacaoEstoqueRepository movimentacaoEstoqueRepository,
+            PermissaoRepository permissaoRepository,
+            UsuarioPermissaoRepository usuarioPermissaoRepository,
             UsuarioRepository usuarioRepository,
             PasswordEncoder passwordEncoder
     ) {
         this.pacienteRepository = pacienteRepository;
         this.estoqueRepository = estoqueRepository;
         this.movimentacaoEstoqueRepository = movimentacaoEstoqueRepository;
+        this.permissaoRepository = permissaoRepository;
+        this.usuarioPermissaoRepository = usuarioPermissaoRepository;
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -77,6 +86,7 @@ public class DatabaseSeeder implements CommandLineRunner {
         criarUsuarioSeNaoExistir("medico", "Medico@12345", "ROLE_MEDICO");
         criarUsuarioSeNaoExistir("recepcao", "Recepcao@12345", "ROLE_RECEPCAO");
         criarUsuarioSeNaoExistir("leitura", "Leitura@12345", "ROLE_LEITURA");
+        criarPermissoesPadrao();
 
         boolean jaSeedado = pacienteRepository.findAll().stream()
                 .map(Paciente::getCodigoIdentificacao)
@@ -335,5 +345,48 @@ public class DatabaseSeeder implements CommandLineRunner {
         usuario.setSenha(passwordEncoder.encode(senha));
         usuario.setRole(role);
         usuarioRepository.save(usuario);
+    }
+
+    private void criarPermissoesPadrao() {
+        String[][] permissoes = new String[][]{
+                {"dashboard.read", "dashboard", "read", "Visualizar dashboard"},
+                {"pacientes.read", "pacientes", "read", "Visualizar pacientes"},
+                {"pacientes.write", "pacientes", "write", "Criar e atualizar pacientes"},
+                {"produtos.read", "produtos", "read", "Visualizar produtos"},
+                {"produtos.write", "produtos", "write", "Criar e atualizar produtos"},
+                {"medicos.read", "medicos", "read", "Visualizar médicos"},
+                {"medicos.write", "medicos", "write", "Criar e atualizar médicos"},
+                {"estoque.read", "estoque", "read", "Visualizar estoque"},
+                {"estoque.write", "estoque", "write", "Movimentar estoque"},
+                {"usuarios.read", "usuarios", "read", "Visualizar usuários"},
+                {"usuarios.write", "usuarios", "write", "Criar e atualizar usuários"},
+                {"permissoes.read", "permissoes", "read", "Visualizar permissões"},
+                {"auditoria.read", "auditoria", "read", "Visualizar auditoria"}
+        };
+
+        for (String[] item : permissoes) {
+            permissaoRepository.findByChave(item[0]).orElseGet(() -> permissaoRepository.save(
+                    new Permissao(null, item[0], item[1], item[2], item[3], true)
+            ));
+        }
+
+        Usuario admin = usuarioRepository.findByUsername(adminUsername).orElse(null);
+        if (admin == null) {
+            return;
+        }
+
+        if (!usuarioPermissaoRepository.findAllByUsuarioId(admin.getId()).isEmpty()) {
+            return;
+        }
+
+        permissaoRepository.findAll().forEach(permissao ->
+                usuarioPermissaoRepository.save(new org.example.models.UsuarioPermissao(
+                        new org.example.models.UsuarioPermissaoId(admin.getId(), permissao.getId()),
+                        admin,
+                        permissao,
+                        null,
+                        admin
+                ))
+        );
     }
 }

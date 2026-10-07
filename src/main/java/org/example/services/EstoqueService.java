@@ -4,13 +4,18 @@ import org.example.exceptions.BadRequestException;
 import org.example.exceptions.ConflictException;
 import org.example.models.Estoque;
 import org.example.models.MovimentacaoEstoque;
+import org.example.models.Usuario;
 import org.example.repositories.EstoqueRepository;
 import org.example.repositories.MovimentacaoEstoqueRepository;
+import org.example.repositories.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.PostConstruct;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +28,9 @@ public class EstoqueService {
 
     @Autowired
     private MovimentacaoEstoqueRepository movimentacaoRepository;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     // Inicializa estoque ao startup
     @PostConstruct
@@ -70,17 +78,18 @@ public class EstoqueService {
         }
 
         Estoque estoque = obterEstoque();
+        int saldoAnterior = estoque.getTotalKits() == null ? 0 : estoque.getTotalKits();
 
         // Validar SAIDA
-        if (tipoNormalizado.equals("SAIDA") && quantidade > estoque.getTotalKits()) {
+        if (tipoNormalizado.equals("SAIDA") && quantidade > saldoAnterior) {
             throw new ConflictException("Estoque insuficiente para a saída solicitada");
         }
 
         // Atualizar estoque
         if (tipoNormalizado.equals("ENTRADA")) {
-            estoque.setTotalKits(estoque.getTotalKits() + quantidade);
+            estoque.setTotalKits(saldoAnterior + quantidade);
         } else {
-            estoque.setTotalKits(estoque.getTotalKits() - quantidade);
+            estoque.setTotalKits(saldoAnterior - quantidade);
         }
         estoqueRepository.save(estoque);
 
@@ -89,6 +98,10 @@ public class EstoqueService {
         mov.setTipo(tipoNormalizado);
         mov.setQuantidade(quantidade);
         mov.setMotivo(motivo == null ? "" : motivo.trim());
+        mov.setSaldoAnterior(saldoAnterior);
+        mov.setSaldoPosterior(estoque.getTotalKits());
+        mov.setRegistradoEm(LocalDateTime.now());
+        usuarioAtual().ifPresent(mov::setUsuario);
         return movimentacaoRepository.save(mov);
     }
 
@@ -109,5 +122,13 @@ public class EstoqueService {
     public void decrementarEstoque(Integer quantidade) {
         registrarMovimentacao("SAIDA", quantidade, "Retirada para paciente");
     }
-}
 
+    private java.util.Optional<Usuario> usuarioAtual() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            return java.util.Optional.empty();
+        }
+
+        return usuarioRepository.findByUsername(authentication.getName());
+    }
+}

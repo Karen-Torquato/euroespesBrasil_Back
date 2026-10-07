@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -59,6 +60,7 @@ public class AuthController {
                         return ResponseEntity.ok()
                             .header(HttpHeaders.SET_COOKIE, accessCookie(token).toString())
                             .body(Map.of(
+                            "token", token,
                             "role", u.getRole(),
                             "username", u.getUsername()
                         ));
@@ -90,6 +92,7 @@ public class AuthController {
                         return ResponseEntity.ok()
                             .header(HttpHeaders.SET_COOKIE, accessCookie(novoToken).toString())
                             .body(Map.of(
+                                "token", novoToken,
                                 "role", u.getRole(),
                                 "username", u.getUsername()
                         ));
@@ -107,6 +110,15 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, expiredAccessCookie().toString())
                 .body(Map.of("message", "Sessão encerrada"));
+    }
+
+    @GetMapping("/csrf")
+    public ResponseEntity<?> csrf(CsrfToken csrfToken) {
+        return ResponseEntity.ok(Map.of(
+                "headerName", csrfToken.getHeaderName(),
+                "parameterName", csrfToken.getParameterName(),
+                "token", csrfToken.getToken()
+        ));
     }
 
     private ResponseCookie accessCookie(String token) {
@@ -141,4 +153,3 @@ public class AuthController {
         return null;
     }
 }
-

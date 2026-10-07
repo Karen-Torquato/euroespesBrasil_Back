@@ -24,9 +24,19 @@ public class ProdutoController {
         return ResponseEntity.ok(produtoService.listarTodos());
     }
 
+    @GetMapping("/estoque-baixo")
+    public ResponseEntity<List<Produto>> listarProdutosEmEstoqueBaixo() {
+        return ResponseEntity.ok(produtoService.listarProdutosEmEstoqueBaixo());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Produto> obterPorId(@PathVariable Long id) {
         return ResponseEntity.ok(produtoService.obterPorId(id));
+    }
+
+    @GetMapping("/{id}/auditoria")
+    public ResponseEntity<List<ProdutoService.MovimentacaoProdutoResumo>> listarAuditoria(@PathVariable Long id) {
+        return ResponseEntity.ok(produtoService.listarAuditoriaPorProduto(id));
     }
 
     @PostMapping

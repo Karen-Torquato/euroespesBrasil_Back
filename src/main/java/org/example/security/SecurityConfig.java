@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -52,7 +53,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRepository(csrfTokenRepository())
                 .ignoringRequestMatchers(
                     new AntPathRequestMatcher("/api/auth/login"),
                     new AntPathRequestMatcher("/api/auth/refresh"),
@@ -71,6 +72,12 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/api/pacientes/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/medicos/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/medicos/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/medicos/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/medicos/**")
+                    .hasAnyRole("ADMIN", "MEDICO", "RECEPCAO", "LEITURA")
                 .requestMatchers(HttpMethod.POST, "/api/estoque/movimentar").hasAnyRole("ADMIN", "RECEPCAO")
                 .requestMatchers(HttpMethod.GET, "/api/pacientes/**", "/api/estoque/**")
                     .hasAnyRole("ADMIN", "MEDICO", "RECEPCAO", "LEITURA")
@@ -135,6 +142,13 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setHeaderName("X-CSRF-TOKEN");
+        return repository;
+    }
+
+    @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         List<String> origins = List.of(allowedOrigins.split(","))
@@ -145,7 +159,7 @@ public class SecurityConfig {
 
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-XSRF-TOKEN"));
+        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "X-XSRF-TOKEN", "X-CSRF-TOKEN"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
@@ -154,4 +168,3 @@ public class SecurityConfig {
         return source;
     }
 }
-

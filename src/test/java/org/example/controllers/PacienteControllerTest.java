@@ -140,4 +140,28 @@ class PacienteControllerTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
     }
+
+    @Test
+    void atualizarPaciente_parcialSemNome_deveManterNomeEAtualizarTimeline() throws Exception {
+        Paciente p = new Paciente();
+        p.setNome("Paciente Parcial");
+        p.setStatusResultado("Pendente");
+        p.setDataSaidaEstoque("2026-09-01T10:00");
+        Paciente salvo = pacienteRepository.save(p);
+
+        mockMvc.perform(put("/api/pacientes/" + salvo.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "dataEntrega": "2026-09-02T10:00",
+                                  "dataColetaProcesso": "2026-09-03T10:00"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nome").value("Paciente Parcial"))
+                .andExpect(jsonPath("$.dataEntrega").value("2026-09-02T10:00"))
+                .andExpect(jsonPath("$.dataColetaProcesso").value("2026-09-03T10:00"))
+                .andExpect(jsonPath("$.statusResultado").value("Coleta em processo"));
+    }
 }

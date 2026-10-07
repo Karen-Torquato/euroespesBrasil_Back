@@ -3,7 +3,9 @@ package org.example.services;
 import org.example.exceptions.BadRequestException;
 import org.example.exceptions.ConflictException;
 import org.example.exceptions.NotFoundException;
+import org.example.models.ItemPedidoRequest;
 import org.example.models.Paciente;
+import org.example.models.PedidoItem;
 import org.example.repositories.PacienteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +40,9 @@ class PacienteServiceTest {
     @Mock
     private AuditoriaService auditoriaService;
 
+    @Mock
+    private ProdutoService produtoService;
+
     @InjectMocks
     private PacienteService pacienteService;
 
@@ -48,6 +53,8 @@ class PacienteServiceTest {
         p.setNome(nome);
         p.setStatusResultado(status);
         p.setQuantidadeKits(kits);
+        p.setCpf("529.982.247-25");
+        p.setCodigoIdentificacao("PAC-001");
         return p;
     }
 
@@ -64,6 +71,19 @@ class PacienteServiceTest {
             return p;
         });
         when(pacienteRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+    }
+
+    private ItemPedidoRequest itemPedido(long produtoId, int quantidade) {
+        ItemPedidoRequest item = new ItemPedidoRequest();
+        item.setProdutoId(produtoId);
+        item.setQuantidade(quantidade);
+        return item;
+    }
+
+    private PedidoItem itemGerado(String codigo) {
+        PedidoItem item = new PedidoItem();
+        item.setCodigoGerado(codigo);
+        return item;
     }
 
     // ─── criarPaciente ───────────────────────────────────────────────────────────
@@ -135,46 +155,49 @@ class PacienteServiceTest {
         @DisplayName("paciente ativo com kits válidos deve debitar estoque")
         void ativoDeveDebitarEstoque() {
             Paciente p = novoPaciente("Maria", "Pendente", 2);
+            p.setItensPedido(List.of(itemPedido(1L, 2)));
+            when(produtoService.baixarEstoqueEGerarItens(any(Paciente.class), anyList()))
+                    .thenReturn(List.of(itemGerado("10052026080001")));
+
             pacienteService.criarPaciente(p);
-            verify(estoqueService).registrarMovimentacao(eq("SAIDA"), eq(2), anyString());
+            verify(produtoService).baixarEstoqueEGerarItens(any(Paciente.class), anyList());
         }
 
         @Test
-        @DisplayName("paciente ativo sem kits deve lançar BadRequestException")
-        void ativoSemKitsLancaBadRequest() {
-            Paciente p = novoPaciente("Maria", "Pendente", 0);
+        @DisplayName("paciente ativo sem produtos deve lançar BadRequestException")
+        void ativoSemProdutosLancaBadRequest() {
+            Paciente p = novoPaciente("Maria", "Pendente", 1);
             assertThatThrownBy(() -> pacienteService.criarPaciente(p))
                     .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("kits");
+                    .hasMessageContaining("produto");
         }
 
         @Test
-        @DisplayName("paciente ativo com kits nulos deve lançar BadRequestException")
-        void ativoComKitsNulosLancaBadRequest() {
-            Paciente p = novoPaciente("Maria", "Pendente", null);
+        @DisplayName("paciente ativo com produto sem quantidade válida deve lançar BadRequestException")
+        void ativoComQuantidadeInvalidaNoPedidoLancaBadRequest() {
+            Paciente p = novoPaciente("Maria", "Pendente", 1);
+            p.setItensPedido(List.of(itemPedido(1L, 0)));
             assertThatThrownBy(() -> pacienteService.criarPaciente(p))
-                    .isInstanceOf(BadRequestException.class);
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("produto");
         }
 
         @Test
-        @DisplayName("código de identificação duplicado deve lançar ConflictException")
-        void codigoDuplicadoLancaConflict() {
-            Paciente existente = pacienteExistente(1L, "Outro", "Pendente");
-            existente.setCodigoIdentificacao("123456");
-            when(pacienteRepository.existsByCodigoIdentificacao("123456")).thenReturn(true);
-
+        @DisplayName("código enviado no payload de rascunho deve ser preservado")
+        void codigoEnviadoNoPayloadRascunhoDeveSerPreservado() {
             Paciente novo = novoPaciente("Novo", "Rascunho", 1);
             novo.setCodigoIdentificacao("123456");
-
-            assertThatThrownBy(() -> pacienteService.criarPaciente(novo))
-                    .isInstanceOf(ConflictException.class)
-                    .hasMessageContaining("código de identificação");
+            Paciente salvo = pacienteService.criarPaciente(novo);
+            assertThat(salvo.getCodigoIdentificacao()).isEqualTo("123456");
         }
 
         @Test
         @DisplayName("status nulo deve ser tratado como Pendente em paciente ativo")
         void statusNuloTratadoComoPendente() {
             Paciente p = novoPaciente("Ana", null, 1);
+            p.setItensPedido(List.of(itemPedido(1L, 1)));
+            when(produtoService.baixarEstoqueEGerarItens(any(Paciente.class), anyList()))
+                    .thenReturn(List.of(itemGerado("10052026080003")));
             Paciente salvo = pacienteService.criarPaciente(p);
             assertThat(salvo.getStatusResultado()).isEqualTo("Pendente");
         }
@@ -261,13 +284,17 @@ class PacienteServiceTest {
         @DisplayName("rascunho ativado deve debitar estoque")
         void rascunhoAtivadoDeveDebitarEstoque() {
             Paciente existente = pacienteExistente(1L, "Ana", "Rascunho");
+            existente.setCodigoIdentificacao(null);
             when(pacienteRepository.findById(1L)).thenReturn(Optional.of(existente));
             when(pacienteRepository.findAll()).thenReturn(List.of(existente));
+            when(produtoService.baixarEstoqueEGerarItens(any(Paciente.class), anyList()))
+                    .thenReturn(List.of(itemGerado("10052026080002")));
 
             Paciente atualizado = novoPaciente("Ana", "Pendente", 2);
+            atualizado.setItensPedido(List.of(itemPedido(1L, 2)));
             pacienteService.atualizarPaciente(1L, atualizado);
 
-            verify(estoqueService).registrarMovimentacao(eq("SAIDA"), eq(2), anyString());
+            verify(produtoService).baixarEstoqueEGerarItens(any(Paciente.class), anyList());
         }
 
         @Test
@@ -352,14 +379,16 @@ class PacienteServiceTest {
                 return p;
             });
             Paciente p = novoPaciente("Ana", "Pendente", 1);
+            p.setItensPedido(List.of(itemPedido(1L, 1)));
+            when(produtoService.baixarEstoqueEGerarItens(any(Paciente.class), anyList()))
+                    .thenReturn(List.of(itemGerado("10052026080004")));
             Paciente salvo = pacienteService.criarPaciente(p);
             assertThat(salvo.getDataSaidaEstoque()).isNotBlank();
         }
 
         @Test
-        @DisplayName("tentar enviar dataEntrega sem dataSaidaEstoque deve limpar dataEntrega (sem exceção)")
-        void tentarAvancarSemDataSaidaLimpaDataEntrega() {
-            // O serviço protege o fluxo limpando estágios posteriores, não lançando exceção
+        @DisplayName("tentar enviar dataEntrega sem dataSaidaEstoque deve lançar ConflictException")
+        void tentarAvancarSemDataSaidaLancaConflict() {
             Paciente existente = pacienteExistente(1L, "Ana", "Pendente");
             existente.setDataSaidaEstoque(null);
             when(pacienteRepository.findById(1L)).thenReturn(Optional.of(existente));
@@ -370,19 +399,14 @@ class PacienteServiceTest {
             atualizado.setNome("Ana");
             atualizado.setDataEntrega("2026-07-01T10:00:00");
 
-            // Não deve lançar — o serviço limpa dataEntrega silenciosamente
-            Paciente resultado = pacienteService.atualizarPaciente(1L, atualizado);
-            // dataEntrega é limpa pois dataSaidaEstoque está ausente
-            assertThat(resultado.getDataEntrega()).isNullOrEmpty();
+            assertThatThrownBy(() -> pacienteService.atualizarPaciente(1L, atualizado))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Kit saiu do estoque");
         }
 
         @Test
-        @DisplayName("não deve avançar coleta em processo sem dataEntrega — lança ConflictException")
+        @DisplayName("não deve avançar coleta em processo sem dataEntrega")
         void naoDeveAvancarColetaSemDataEntrega() {
-            // Para esse caso o serviço SIM lança exceção:
-            // dataColetaProcesso setado diretamente sem dataEntrega
-            // mas ambos dataSaidaEstoque e dataEntrega estão presentes no existente
-            // e o update tenta pular para coleta em processo sem dataEntrega
             Paciente existente = pacienteExistente(1L, "Ana", "Pendente");
             existente.setDataSaidaEstoque("2026-07-01T10:00:00");
             existente.setDataEntrega(null);
@@ -393,10 +417,9 @@ class PacienteServiceTest {
             Paciente atualizado = new Paciente();
             atualizado.setNome("Ana");
             atualizado.setDataColetaProcesso("2026-07-02T10:00:00");
-            // dataEntrega continua null → dataColetaProcesso será limpa pelo serviço
-            Paciente resultado = pacienteService.atualizarPaciente(1L, atualizado);
-            assertThat(resultado.getDataColetaProcesso()).isNullOrEmpty();
+            assertThatThrownBy(() -> pacienteService.atualizarPaciente(1L, atualizado))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Coleta em processo");
         }
     }
 }
-

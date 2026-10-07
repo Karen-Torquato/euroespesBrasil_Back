@@ -12,6 +12,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import jakarta.servlet.http.Cookie;
 
 @Component
@@ -31,7 +33,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = bearerToken(request.getHeader("Authorization"));
         if (token == null) {
-            token = cookieToken(request.getCookies());
+            token = cookieToken(request);
         }
         if (token != null) {
             if (jwtUtil.isTokenValido(token)) {
@@ -52,13 +54,34 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         return header != null && header.startsWith("Bearer ") ? header.substring(7).trim() : null;
     }
 
-    private String cookieToken(Cookie[] cookies) {
-        if (cookies == null) {
+    private String cookieToken(HttpServletRequest request) {
+        String rawToken = rawCookieToken(request);
+        if (rawToken != null) {
+            return rawToken;
+        }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if ("euroespes_access".equals(cookie.getName()) && !cookie.getValue().isBlank()) {
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String rawCookieToken(HttpServletRequest request) {
+        String header = request.getHeader("Cookie");
+        if (header == null) {
             return null;
         }
-        for (Cookie cookie : cookies) {
-            if ("euroespes_access".equals(cookie.getName()) && !cookie.getValue().isBlank()) {
-                return cookie.getValue();
+
+        for (String part : header.split(";")) {
+            String[] nameAndValue = part.trim().split("=", 2);
+            if (nameAndValue.length == 2 && "euroespes_access".equals(nameAndValue[0])) {
+                String value = URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8);
+                return value.isBlank() ? null : value;
             }
         }
         return null;

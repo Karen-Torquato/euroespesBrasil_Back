@@ -40,9 +40,11 @@ class ProdutoServiceTest {
     void listsAndLoadsProducts() {
         Produto product = product(1L, 5, 2, 0);
         when(produtoRepository.findAll()).thenReturn(List.of(product));
+        when(produtoRepository.findProdutosEmEstoqueBaixo()).thenReturn(List.of(product));
         when(produtoRepository.findById(1L)).thenReturn(Optional.of(product));
 
         assertThat(service.listarTodos()).containsExactly(product);
+        assertThat(service.listarProdutosEmEstoqueBaixo()).containsExactly(product);
         assertThat(service.obterPorId(1L)).isSameAs(product);
         assertThatThrownBy(() -> service.obterPorId(9L)).isInstanceOf(NotFoundException.class);
     }

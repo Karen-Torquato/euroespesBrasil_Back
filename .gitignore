@@ -1,4 +1,7 @@
 target/
+/.backups/
+uploads-test/
+docker/prod-sim/certs/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -46,6 +49,7 @@ data/
 
 # ─── Uploads de pacientes — dados sensíveis ─────────────────────────
 uploads/
+uploads-test/
 
 # ─── Segredos e configs de produção — NUNCA versionar ───────────────
 application-secrets.properties

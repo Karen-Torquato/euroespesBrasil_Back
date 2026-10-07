@@ -86,13 +86,28 @@ class PacienteIntegrationTest {
     @Order(2)
     @DisplayName("POST criar paciente ativo deve retornar 201 com status Pendente")
     void criarPacienteAtivo() throws Exception {
+        MvcResult produtoResult = mockMvc.perform(post("/api/produtos")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "nome", "Kit Paciente Teste",
+                                "codigoProduto", "005",
+                                "codigoSerie", "A1",
+                                "estoqueAtual", 50,
+                                "estoqueMinimo", 5
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long produtoId = objectMapper.readTree(produtoResult.getResponse().getContentAsString()).get("id").asLong();
+
         String body = objectMapper.writeValueAsString(Map.of(
                 "nome", "Paciente Ativo Teste",
                 "cpf", "529.982.247-25",
                 "email", "ativo@teste.com",
                 "telefone", "(11) 99999-0001",
                 "endereco", "Rua Teste, 123",
-                "quantidadeKits", 1
+                "codigoIdentificacao", "PAC-ATIVO-001",
+                "itensPedido", java.util.List.of(Map.of("produtoId", produtoId, "quantidade", 1))
         ));
 
         MvcResult result = mockMvc.perform(post("/api/pacientes")
@@ -101,6 +116,7 @@ class PacienteIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.statusResultado").value("Pendente"))
+                .andExpect(jsonPath("$.codigoIdentificacao").exists())
                 .andExpect(jsonPath("$.id").exists())
                 .andReturn();
 
@@ -354,4 +370,3 @@ class PacienteIntegrationTest {
                                 .andExpect(jsonPath("$.email").value("exportacao@teste.com"));
         }
 }
-

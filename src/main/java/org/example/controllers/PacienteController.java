@@ -99,7 +99,7 @@ public class PacienteController {
     @PutMapping("/{id}")
     public ResponseEntity<Paciente> atualizarPaciente(
             @PathVariable Long id,
-            @Valid @RequestBody Paciente pacienteAtualizado) {
+            @RequestBody Paciente pacienteAtualizado) {
         Paciente atualizado = pacienteService.atualizarPaciente(id, pacienteAtualizado);
         mascararDadosSensiveis(atualizado);
         return ResponseEntity.ok(atualizado);

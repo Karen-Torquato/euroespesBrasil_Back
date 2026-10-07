@@ -15,7 +15,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.blankOrNullString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -54,7 +58,16 @@ class AuthControllerTest {
                                 Map.of("username", "testuser", "senha", "Test@12345"))))
                 .andExpect(status().isOk())
                 .andExpect(cookie().exists("euroespes_access"))
+                .andExpect(jsonPath("$.token").value(not(blankOrNullString())))
                 .andExpect(jsonPath("$.role").value("ROLE_ADMIN"));
+    }
+
+    @Test
+    void csrf_deveRetornarTokenParaClienteSpa() throws Exception {
+        mockMvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value(not(blankOrNullString())))
+                .andExpect(jsonPath("$.headerName").value("X-CSRF-TOKEN"));
     }
 
     @Test
@@ -86,8 +99,39 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/refresh")
                 .cookie(login.getResponse().getCookie("euroespes_access")))
                 .andExpect(status().isOk())
+            .andExpect(jsonPath("$.token").value(not(blankOrNullString())))
             .andExpect(cookie().exists("euroespes_access"));
     }
+
+            @Test
+            void refresh_comCookieRotacionado_devePermitirCadastrarProduto() throws Exception {
+            var login = mockMvc.perform(post("/api/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(
+                        Map.of("username", "testuser", "senha", "Test@12345"))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            var refresh = mockMvc.perform(post("/api/auth/refresh")
+                    .cookie(login.getResponse().getCookie("euroespes_access")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            String produto = objectMapper.writeValueAsString(Map.of(
+                "nome", "Produto teste de sessão renovada",
+                "codigoProduto", "RFR1",
+                "codigoSerie", "SFR1",
+                "estoqueAtual", 0,
+                "estoqueMinimo", 5));
+
+            mockMvc.perform(post("/api/produtos")
+                    .with(csrf())
+                    .cookie(refresh.getResponse().getCookie("euroespes_access"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(produto))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.nome").value("Produto teste de sessão renovada"));
+            }
 
     @Test
     void refresh_comTokenInvalido_deveRetornar401() throws Exception {
