@@ -1,0 +1,10 @@
+target/
+data/
+uploads/
+uploads-test/
+.git/
+.idea/
+*.log
+*.iml
+.env
+.env.*
